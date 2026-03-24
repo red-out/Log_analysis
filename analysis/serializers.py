@@ -75,6 +75,7 @@ class DetectedAnomalySerializer(serializers.ModelSerializer):
             "detected_at",
             "detection_method",
             "confidence_score",
+            "risk_level",
             "model_score",
             "explanation",
             "is_false_positive",
@@ -95,7 +96,7 @@ class AlertSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Alert
-        fields = ("id", "created_at", "status", "message", "anomaly")
+        fields = ("id", "created_at", "status", "risk_level", "message", "anomaly")
 
 
 class AnalysisSessionSerializer(serializers.ModelSerializer):

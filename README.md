@@ -127,6 +127,19 @@ curl -u admin:password -X POST -F "file=@sample_access.log" http://localhost:800
 - выполняется предсказание Isolation Forest;
 - при аномалии или срабатывании сигнатуры создаётся запись в «Обнаруженные аномалии» и при высокой тяжести — алерт. В ответах API у аномалий всегда есть поле **explanation**.
 
+### Загрузка из файловой системы (CLI)
+
+Для пакетной загрузки логов напрямую из файловой системы используйте management-команду:
+
+```bash
+python manage.py import_logs_from_fs --path /var/log/nginx --recursive --created-by admin
+```
+
+Полезные флаги:
+- `--web-server-id 1` — привязать импорт к конкретному `WebServer`;
+- `--skip-analysis` — только сохранить лог-записи без детекции аномалий;
+- можно передать и путь к одному файлу: `--path ./sample_access.log`.
+
 ---
 
 ## 5. Обучение модели на накопленных данных

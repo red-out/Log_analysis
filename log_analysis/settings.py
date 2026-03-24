@@ -54,11 +54,15 @@ TEMPLATES = [
 ]
 WSGI_APPLICATION = "log_analysis.wsgi.application"
 
-# --- Database: SQLite (self-contained) ---
+# --- Database: PostgreSQL only ---
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db" / "db.sqlite3",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("DB_NAME", "log_analysis"),
+        "USER": os.environ.get("DB_USER", "log_user"),
+        "PASSWORD": os.environ.get("DB_PASSWORD", "log_password"),
+        "HOST": os.environ.get("DB_HOST", "db"),
+        "PORT": os.environ.get("DB_PORT", "5432"),
     }
 }
 

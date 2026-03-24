@@ -61,11 +61,12 @@ class DetectedAnomalyAdmin(admin.ModelAdmin):
         "id",
         "log_entry",
         "detection_method",
+        "risk_level",
         "confidence_score",
         "is_false_positive",
         "detected_at",
     )
-    list_filter = ("detection_method", "is_false_positive", "detected_at")
+    list_filter = ("detection_method", "risk_level", "is_false_positive", "detected_at")
     search_fields = ("explanation", "log_entry__uri")
     readonly_fields = ("detected_at", "model_score", "explanation")
     date_hierarchy = "detected_at"
@@ -73,8 +74,8 @@ class DetectedAnomalyAdmin(admin.ModelAdmin):
 
 @admin.register(Alert)
 class AlertAdmin(admin.ModelAdmin):
-    list_display = ("id", "anomaly", "status", "created_at", "recipient")
-    list_filter = ("status", "created_at")
+    list_display = ("id", "anomaly", "risk_level", "status", "created_at", "recipient")
+    list_filter = ("risk_level", "status", "created_at")
     readonly_fields = ("created_at",)
 
 

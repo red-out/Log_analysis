@@ -146,6 +146,12 @@ class DetectedAnomaly(models.Model):
         SIGNATURE = "signature", "Сигнатурный"
         HYBRID = "hybrid", "Гибридный"
 
+    class RiskLevel(models.TextChoices):
+        LOW = "low", "Low"
+        MEDIUM = "medium", "Medium"
+        HIGH = "high", "High"
+        CRITICAL = "critical", "Critical"
+
     log_entry = models.ForeignKey(
         LogEntry,
         on_delete=models.CASCADE,
@@ -194,6 +200,13 @@ class DetectedAnomaly(models.Model):
         "Ложное срабатывание",
         default=False,
     )
+    risk_level = models.CharField(
+        "Уровень риска",
+        max_length=16,
+        choices=RiskLevel.choices,
+        default=RiskLevel.LOW,
+        help_text="Нормализованный уровень риска: low/medium/high/critical.",
+    )
 
     class Meta:
         verbose_name = "Обнаруженная аномалия"
@@ -213,6 +226,12 @@ class Alert(models.Model):
         NEW = "new", "Новый"
         IN_PROGRESS = "in_progress", "В работе"
         RESOLVED = "resolved", "Закрыт"
+
+    class RiskLevel(models.TextChoices):
+        LOW = "low", "Low"
+        MEDIUM = "medium", "Medium"
+        HIGH = "high", "High"
+        CRITICAL = "critical", "Critical"
 
     anomaly = models.ForeignKey(
         DetectedAnomaly,
@@ -236,6 +255,13 @@ class Alert(models.Model):
         default=Status.NEW,
     )
     message = models.TextField("Сообщение")
+    risk_level = models.CharField(
+        "Уровень риска",
+        max_length=16,
+        choices=RiskLevel.choices,
+        default=RiskLevel.LOW,
+        help_text="Нормализованный уровень риска алерта: low/medium/high/critical.",
+    )
 
     class Meta:
         verbose_name = "Алерт"

@@ -1,9 +1,22 @@
-# Один контейнер приложения, БД — SQLite внутри контейнера.
-# Данные сохраняются в volume, чтобы не терялись при перезапуске.
-
 version: "3.9"
 
 services:
+  db:
+    image: postgres:16
+    container_name: log-analysis-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=log_analysis
+      - POSTGRES_USER=log_user
+      - POSTGRES_PASSWORD=log_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U log_user -d log_analysis"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   web:
     build: .
     container_name: log-analysis-web
@@ -13,16 +26,21 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Файл db.sqlite3 сохраняется здесь
-      - db_data:/app/db
-      # Медиа и обученные модели
       - media_data:/app/media
     environment:
       - DJANGO_SETTINGS_MODULE=log_analysis.settings
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-change-me-in-production}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-true}
+      - DB_NAME=log_analysis
+      - DB_USER=log_user
+      - DB_PASSWORD=log_password
+      - DB_HOST=db
+      - DB_PORT=5432
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  db_data:
   media_data:
+  postgres_data:
