@@ -1,0 +1,16 @@
+<form method="post" action="{% url 'ui:alert_set_status' a.id %}" class="d-inline-block">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+  <label class="visually-hidden" for="alert-status-{{ a.id }}">Статус алерта {{ a.id }}</label>
+  <select
+    id="alert-status-{{ a.id }}"
+    name="status"
+    class="form-select form-select-sm bg-dark text-light border-secondary"
+    style="min-width: 12rem;"
+    onchange="this.form.submit()"
+  >
+    {% for value, label in alert_status_choices %}
+      <option value="{{ value }}" {% if a.status == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</form>

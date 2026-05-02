@@ -1,0 +1,216 @@
+{% extends "ui/base.html" %}
+{% block title %}Статистика — Log Analysis{% endblock %}
+{% block main_container_class %}container-fluid px-2 px-md-3{% endblock %}
+{% block content %}
+<div class="ui-wide">
+  <div class="row g-3">
+    <div class="col-12">
+      <div class="card border-0">
+        <div class="card-body">
+          <h4 class="mb-1">Статистика</h4>
+          <p class="muted mb-3">
+            Данные по <strong>алертам</strong> (созданным в выбранном интервале) и по <strong>аномалиям</strong> (время обнаружения в том же интервале).
+            Сравнение с предыдущим периодом — тот же календарный отрезок длины {{ period_days }} дн., сразу перед выбранным диапазоном ({{ prev_period_label }}).
+          </p>
+
+          <form method="get" class="row g-2 align-items-end filter-bar w-100 mb-4">
+            <div class="col-12 col-md">
+              <label class="form-label muted small mb-0">С даты</label>
+              <input type="date" name="date_from" value="{{ filter_date_from }}" class="form-control form-control-sm bg-dark text-light border-secondary w-100" />
+            </div>
+            <div class="col-12 col-md">
+              <label class="form-label muted small mb-0">По дату</label>
+              <input type="date" name="date_to" value="{{ filter_date_to }}" class="form-control form-control-sm bg-dark text-light border-secondary w-100" />
+            </div>
+            <div class="col-12 col-md-auto d-flex flex-wrap gap-2 align-items-end">
+              <button type="submit" class="btn btn-primary btn-sm">Показать</button>
+              <a href="{% url 'ui:stats' %}" class="btn btn-outline-light btn-sm">Сброс (30 дней)</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card border-0 h-100">
+        <div class="card-body">
+          <h6 class="mb-3">Критичность алертов</h6>
+          <div style="max-height: 320px;">
+            <canvas id="chartRisk" aria-label="Критичность алертов"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card border-0 h-100">
+        <div class="card-body">
+          <h6 class="mb-3">Статусы алертов</h6>
+          <div style="max-height: 320px;">
+            <canvas id="chartStatus" aria-label="Статусы алертов"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12">
+      <div class="card border-0">
+        <div class="card-body">
+          <h6 class="mb-3">Топ‑10 типов аномалий по алертам за период</h6>
+          <p class="muted small mb-2">Ключевой фактор — код типа аномалии, связанной с алертом (без типа — отдельная категория).</p>
+          <div style="max-height: 380px;">
+            <canvas id="chartFactors" aria-label="Топ факторов"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card border-0 h-100">
+        <div class="card-body">
+          <h6 class="mb-3">Аномалии: сигнатуры / ML / гибрид</h6>
+          <div style="max-height: 320px;">
+            <canvas id="chartMethods" aria-label="Методы обнаружения аномалий"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card border-0 h-100">
+        <div class="card-body">
+          <h6 class="mb-3">Алерты: текущий период vs предыдущий</h6>
+          <div style="max-height: 320px;">
+            <canvas id="chartCompare" aria-label="Сравнение периодов"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+  {{ chart_data|json_script:"stats-charts-data" }}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    (function () {
+      const cfg = JSON.parse(document.getElementById('stats-charts-data').textContent);
+      const textColor = '#e6e9f2';
+      const gridColor = 'rgba(230,233,242,0.12)';
+      const commonLegend = {
+        labels: { color: textColor },
+      };
+      const palette = ['#1f6feb', '#9a6700', '#d73a49', '#7a1fa2', '#238636', '#8957e5', '#db61a2', '#a371f7', '#f0883e', '#79c0ff'];
+
+      Chart.defaults.color = textColor;
+      Chart.defaults.borderColor = gridColor;
+
+      const doughnutOptions = {
+        maintainAspectRatio: true,
+        plugins: {
+          legend: commonLegend,
+        },
+      };
+
+      new Chart(document.getElementById('chartRisk'), {
+        type: 'doughnut',
+        data: {
+          labels: cfg.risk.labels,
+          datasets: [{
+            data: cfg.risk.values,
+            backgroundColor: palette,
+          }],
+        },
+        options: doughnutOptions,
+      });
+
+      new Chart(document.getElementById('chartStatus'), {
+        type: 'doughnut',
+        data: {
+          labels: cfg.status.labels,
+          datasets: [{
+            data: cfg.status.values,
+            backgroundColor: palette,
+          }],
+        },
+        options: doughnutOptions,
+      });
+
+      new Chart(document.getElementById('chartFactors'), {
+        type: 'bar',
+        data: {
+          labels: cfg.factors.labels,
+          datasets: [{
+            label: 'Алертов',
+            data: cfg.factors.values,
+            backgroundColor: palette,
+          }],
+        },
+        options: {
+          indexAxis: 'y',
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              grid: { color: gridColor },
+              ticks: { color: textColor },
+              beginAtZero: true,
+            },
+            y: {
+              grid: { display: false },
+              ticks: { color: textColor },
+            },
+          },
+        },
+      });
+
+      new Chart(document.getElementById('chartMethods'), {
+        type: 'doughnut',
+        data: {
+          labels: cfg.methods.labels,
+          datasets: [{
+            data: cfg.methods.values,
+            backgroundColor: ['#d73a49', '#1f6feb', '#8957e5'],
+          }],
+        },
+        options: doughnutOptions,
+      });
+
+      const pc = cfg.period_compare;
+      new Chart(document.getElementById('chartCompare'), {
+        type: 'bar',
+        data: {
+          labels: [pc.previous_range, pc.current_range],
+          datasets: [{
+            label: 'Количество алертов',
+            data: [pc.previous, pc.current],
+            backgroundColor: ['#6e7681', '#1f6feb'],
+          }],
+        },
+        options: {
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: function (items) {
+                  return items.length ? items[0].label : '';
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: textColor, maxRotation: 45, minRotation: 0 },
+              grid: { color: gridColor },
+            },
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1, color: textColor },
+              grid: { color: gridColor },
+            },
+          },
+        },
+      });
+    })();
+  </script>
+{% endblock %}

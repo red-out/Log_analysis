@@ -9,7 +9,6 @@ from .views import (
     AlertViewSet,
     AnalysisSessionViewSet,
     LogEntryViewSet,
-    StatsView,
 )
 
 router = DefaultRouter()
@@ -20,6 +19,5 @@ router.register(r"log-entries", LogEntryViewSet, basename="logentry")
 
 urlpatterns = [
     path("logs/upload/", LogUploadView.as_view(), name="log-upload"),
-    path("stats/", StatsView.as_view(), name="stats"),
     path("", include(router.urls)),
 ]

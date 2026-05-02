@@ -10,6 +10,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, Sp
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("analysis.urls")),
+    path("ui/", include("ui.urls")),
     # Swagger: схема и UI
     path("api/schema/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("api/schema/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),

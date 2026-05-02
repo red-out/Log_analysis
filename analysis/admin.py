@@ -9,7 +9,6 @@ from .models import (
     AnomalyType,
     DetectedAnomaly,
     Alert,
-    Report,
 )
 
 
@@ -77,9 +76,3 @@ class AlertAdmin(admin.ModelAdmin):
     list_display = ("id", "anomaly", "risk_level", "status", "created_at", "recipient")
     list_filter = ("risk_level", "status", "created_at")
     readonly_fields = ("created_at",)
-
-
-@admin.register(Report)
-class ReportAdmin(admin.ModelAdmin):
-    list_display = ("id", "generated_at", "generated_by")
-    readonly_fields = ("generated_at", "summary")

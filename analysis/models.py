@@ -225,6 +225,8 @@ class Alert(models.Model):
     class Status(models.TextChoices):
         NEW = "new", "Новый"
         IN_PROGRESS = "in_progress", "В работе"
+        FALSE_POSITIVE = "false_positive", "Ложное срабатывание"
+        CASE = "case", "Дело"
         RESOLVED = "resolved", "Закрыт"
 
     class RiskLevel(models.TextChoices):
@@ -270,36 +272,3 @@ class Alert(models.Model):
 
     def __str__(self) -> str:
         return f"Alert #{self.id} ({self.status})"
-
-
-class Report(models.Model):
-    """
-    Сформированный отчёт (статистика по аномалиям).
-    """
-
-    generated_at = models.DateTimeField("Создан", auto_now_add=True)
-    generated_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="reports",
-    )
-    summary = models.JSONField(
-        "Сводка",
-        default=dict,
-        help_text="Статистика по типам аномалий, периодам и т.д.",
-    )
-    pdf_path = models.CharField(
-        "Путь к PDF",
-        max_length=512,
-        blank=True,
-    )
-
-    class Meta:
-        verbose_name = "Отчёт"
-        verbose_name_plural = "Отчёты"
-        ordering = ["-generated_at"]
-
-    def __str__(self) -> str:
-        return f"Отчёт #{self.id} ({self.generated_at:%Y-%m-%d})"

@@ -1,0 +1,101 @@
+{% extends "ui/base.html" %}
+{% block title %}Аномалии — Log Analysis{% endblock %}
+{% block main_container_class %}container-fluid px-2 px-md-3{% endblock %}
+{% block content %}
+<div class="ui-wide">
+  <div class="row">
+    <div class="col-12">
+      <div class="card border-0">
+        <div class="card-body">
+          <h4 class="mb-1">Обнаруженные аномалии</h4>
+          <div class="muted mb-3">Фильтры по времени обнаружения (по дате), критичности и текстовый поиск по объяснению или URI (до 200 строк).</div>
+
+          <form method="get" class="row g-2 align-items-end filter-bar w-100 mb-3">
+            <div class="col-12 col-sm-6 col-md">
+              <label class="form-label muted small mb-0">С даты</label>
+              <input type="date" name="date_from" value="{{ filter_date_from }}" class="form-control form-control-sm bg-dark text-light border-secondary w-100" />
+            </div>
+            <div class="col-12 col-sm-6 col-md">
+              <label class="form-label muted small mb-0">По дату</label>
+              <input type="date" name="date_to" value="{{ filter_date_to }}" class="form-control form-control-sm bg-dark text-light border-secondary w-100" />
+            </div>
+            <div class="col-12 col-sm-6 col-md-6 col-lg-2">
+              <label class="form-label muted small mb-0">Критичность</label>
+              <select name="risk_level" class="form-select form-select-sm bg-dark text-light border-secondary w-100">
+                <option value="">Все</option>
+                {% for value, label in risk_level_choices %}
+                  <option value="{{ value }}" {% if filter_risk_level == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md">
+              <label class="form-label muted small mb-0">Поиск (URI или объяснение)</label>
+              <input type="search" name="q" value="{{ filter_q }}" placeholder="Часть текста…" class="form-control form-control-sm bg-dark text-light border-secondary w-100" />
+            </div>
+            <div class="col-12 col-md-auto d-flex flex-wrap gap-2 align-items-end">
+              <button type="submit" class="btn btn-primary btn-sm">Применить</button>
+              <a href="{% url 'ui:anomalies' %}" class="btn btn-outline-light btn-sm">Сброс</a>
+            </div>
+          </form>
+
+          <div class="table-responsive">
+            <table class="table table-dark table-hover align-middle">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Время</th>
+                  <th>Риск</th>
+                  <th>Метод</th>
+                  <th>Тип</th>
+                  <th>Уверенность</th>
+                  <th>Сессия</th>
+                  <th>URI</th>
+                  <th>Объяснение</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for a in anomalies %}
+                  <tr>
+                    <td>{{ a.id }}</td>
+                    <td>{{ a.detected_at|date:"Y-m-d H:i:s" }}</td>
+                    <td>
+                      <span class="badge
+                        {% if a.risk_level == 'low' %}badge-low{% endif %}
+                        {% if a.risk_level == 'medium' %}badge-medium{% endif %}
+                        {% if a.risk_level == 'high' %}badge-high{% endif %}
+                        {% if a.risk_level == 'critical' %}badge-critical{% endif %}
+                      ">{{ a.risk_level }}</span>
+                    </td>
+                    <td>{{ a.get_detection_method_display }}</td>
+                    <td>
+                      {% if a.anomaly_type %}
+                        {{ a.anomaly_type.code }}
+                      {% else %}
+                        <span class="muted">—</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ a.confidence_score|floatformat:3 }}</td>
+                    <td>
+                      {% if a.analysis_session_id %}
+                        {{ a.analysis_session_id }}
+                      {% else %}
+                        <span class="muted">—</span>
+                      {% endif %}
+                    </td>
+                    <td class="muted" style="max-width: 280px;">
+                      {% if a.log_entry %}{{ a.log_entry.uri|truncatechars:80 }}{% endif %}
+                    </td>
+                    <td style="max-width: 320px;">{{ a.explanation|truncatechars:160 }}</td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="9" class="muted">Ничего не найдено.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

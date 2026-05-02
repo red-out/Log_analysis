@@ -1,0 +1,73 @@
+{% extends "ui/base.html" %}
+{% block title %}Dashboard — Log Analysis{% endblock %}
+{% block content %}
+  <div class="row g-3">
+    <div class="col-12">
+      <div class="card border-0">
+        <div class="card-body">
+          <h4 class="mb-1">Панель управления</h4>
+          <div class="muted">Быстрый доступ к загрузке, импорту и просмотру результатов.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card border-0 h-100">
+        <div class="card-body position-relative">
+          <div class="muted">Сессии анализа</div>
+          <div class="display-6">{{ sessions_count }}</div>
+          <a href="{% url 'ui:sessions' %}" class="stretched-link" aria-label="Открыть список сессий анализа"></a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card border-0 h-100">
+        <div class="card-body position-relative">
+          <div class="muted">Записи логов</div>
+          <div class="display-6">{{ log_entries_count }}</div>
+          <a href="{% url 'ui:log_entries' %}" class="stretched-link" aria-label="Открыть список записей логов"></a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card border-0 h-100">
+        <div class="card-body position-relative">
+          <div class="muted">Аномалии</div>
+          <div class="display-6">{{ anomalies_count }}</div>
+          <a href="{% url 'ui:anomalies' %}" class="stretched-link" aria-label="Открыть список аномалий"></a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card border-0 h-100">
+        <div class="card-body position-relative">
+          <div class="muted">Новые алерты</div>
+          <div class="display-6">{{ new_alerts_count }}</div>
+          <a href="{% url 'ui:new_alerts' %}" class="stretched-link" aria-label="Открыть список новых алертов"></a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card border-0 h-100">
+        <div class="card-body position-relative">
+          <div class="muted">Веб-серверы</div>
+          <div class="display-6">{{ web_servers_count }}</div>
+          <a href="{% url 'ui:web_servers' %}" class="stretched-link" aria-label="Открыть список веб-серверов"></a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12">
+      <div class="card border-0">
+        <div class="card-body d-flex flex-wrap gap-2">
+          <a class="btn btn-primary" href="{% url 'ui:upload' %}">Загрузить файл с компьютера</a>
+          <a class="btn btn-outline-light" href="{% url 'ui:import' %}">Импорт по пути на сервере</a>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

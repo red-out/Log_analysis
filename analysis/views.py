@@ -1,15 +1,13 @@
 """
-REST API: загрузка логов, список аномалий, алертов, сессий, статистика.
+REST API: загрузка логов, список аномалий, алертов, сессий.
 """
 from __future__ import annotations
 
 import io
 import logging
-import time
-from typing import Any, Dict
+from typing import Any
 
 from django.db import DatabaseError
-from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
@@ -29,8 +27,7 @@ from .serializers import (
     LogUploadSerializer,
 )
 from .services.parser import NginxAccessLogParser
-from .services.ml_engine import IsolationForestEngine
-from .services.risk import calculate_risk_level
+from .services.ingest import ingest_text, with_db_retry
 
 logger = logging.getLogger(__name__)
 
@@ -39,23 +36,6 @@ class LogUploadThrottle(UserRateThrottle):
     """Ограничение частоты загрузки логов (защита от массового заполнения)."""
     rate = "10/min"
     scope = "log_upload"
-
-
-def with_db_retry(callable_fn, retries: int = 3, base_delay_sec: float = 0.5):
-    """
-    Выполнить DB-операцию с коротким exponential backoff.
-    """
-    last_error = None
-    for attempt in range(retries):
-        try:
-            return callable_fn()
-        except DatabaseError as e:
-            last_error = e
-            if attempt == retries - 1:
-                break
-            time.sleep(base_delay_sec * (2 ** attempt))
-    raise last_error
-
 
 class LogUploadView(APIView):
     """
@@ -77,7 +57,6 @@ class LogUploadView(APIView):
         2) бинарное тело запроса (application/octet-stream или text/plain),
            когда весь лог-файл отправляется как raw body (Postman → Body → binary).
         """
-        ml_engine = IsolationForestEngine()
         parser = NginxAccessLogParser()
 
         content: bytes
@@ -119,153 +98,23 @@ class LogUploadView(APIView):
                     )
 
         try:
-            session = with_db_retry(
-                lambda: AnalysisSession.objects.create(
-                    model_version="isolation_forest_v1",
-                    created_by=request.user,
-                )
-            )
+            text = content.decode("utf-8", errors="ignore")
+        except Exception:
+            text = content.decode("cp1251", errors="ignore")
+
+        try:
+            result = ingest_text(text=text, created_by=request.user, web_server=web_server)
         except DatabaseError:
             return Response(
                 {"detail": "База данных временно недоступна. Попробуйте повторить загрузку позже."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        created_logs = 0
-        created_anomalies = 0
-        anomaly_threshold = 0.65  # порог уверенности для создания DetectedAnomaly
-
-        try:
-            text = content.decode("utf-8", errors="ignore")
-        except Exception:
-            text = content.decode("cp1251", errors="ignore")
-
-        lines = text.splitlines()
-        for line in lines:
-            parsed = parser.parse_line(line)
-            if parsed is None:
-                continue
-            try:
-                log_entry = with_db_retry(
-                    lambda: parser.create_log_entry(
-                        parsed,
-                        web_server=web_server,
-                        analysis_session=session,
-                    )
-                )
-                created_logs += 1
-            except DatabaseError as e:
-                logger.warning("Database temporary error on LogEntry create: %s", e)
-                continue
-            except Exception as e:
-                logger.warning("LogEntry create failed: %s", e)
-                continue
-
-            features: Dict[str, Any] = log_entry.features or {}
-            prediction = ml_engine.predict(features)
-
-            # Сигнатурные срабатывания (на основе признаков)
-            has_sqli = bool(int(features.get("has_sqli_signature", 0)))
-            has_xss = bool(int(features.get("has_xss_signature", 0)))
-            has_path_traversal = bool(int(features.get("has_path_traversal_signature", 0)))
-            has_sensitive_file_scan = bool(int(features.get("has_sensitive_file_scan_signature", 0)))
-            has_invalid_method = bool(int(features.get("has_invalid_method", 0)))
-
-            has_signature = any(
-                [
-                    has_sqli,
-                    has_xss,
-                    has_path_traversal,
-                    has_sensitive_file_scan,
-                    has_invalid_method,
-                ]
-            )
-
-            is_anomaly_ml = prediction.is_anomaly and prediction.confidence_score >= anomaly_threshold
-            if is_anomaly_ml or has_signature:
-                if is_anomaly_ml and has_signature:
-                    detection_method = DetectedAnomaly.DetectionMethod.HYBRID
-                elif has_signature:
-                    detection_method = DetectedAnomaly.DetectionMethod.SIGNATURE
-                else:
-                    detection_method = DetectedAnomaly.DetectionMethod.ML
-
-                anomaly_type = None
-                # Приоритет: SQLI, XSS, PATH_TRAVERSAL, SENSITIVE_FILE_SCAN, INVALID_METHOD
-                if has_sqli:
-                    anomaly_type = AnomalyType.objects.filter(code="SQLI").first()
-                elif has_xss:
-                    anomaly_type = AnomalyType.objects.filter(code="XSS").first()
-                elif has_path_traversal:
-                    anomaly_type = AnomalyType.objects.filter(code="PATH_TRAVERSAL").first()
-                elif has_sensitive_file_scan:
-                    anomaly_type = AnomalyType.objects.filter(code="SENSITIVE_FILE_SCAN").first()
-                elif has_invalid_method:
-                    anomaly_type = AnomalyType.objects.filter(code="INVALID_METHOD").first()
-
-                if not anomaly_type and is_anomaly_ml:
-                    anomaly_type = AnomalyType.objects.filter(code="STAT_ANOMALY").first()
-
-                risk_level = calculate_risk_level(
-                    confidence_score=prediction.confidence_score,
-                    severity=getattr(anomaly_type, "severity", None),
-                )
-
-                try:
-                    anomaly = with_db_retry(
-                        lambda: DetectedAnomaly.objects.create(
-                            log_entry=log_entry,
-                            analysis_session=session,
-                            anomaly_type=anomaly_type,
-                            detection_method=detection_method,
-                            confidence_score=prediction.confidence_score,
-                            model_score=prediction.raw_score,
-                            explanation=prediction.explanation,
-                            risk_level=risk_level,
-                        )
-                    )
-                except DatabaseError as e:
-                    logger.warning("Database temporary error on anomaly create: %s", e)
-                    continue
-
-                created_anomalies += 1
-
-                if risk_level in {"high", "critical"}:
-                    try:
-                        with_db_retry(
-                            lambda: Alert.objects.create(
-                                anomaly=anomaly,
-                                recipient=request.user,
-                                risk_level=risk_level,
-                                message=f"Обнаружена аномалия #{anomaly.id}: {prediction.explanation[:200]}",
-                            )
-                        )
-                    except DatabaseError as e:
-                        logger.warning("Database temporary error on alert create: %s", e)
-                        continue
-
-        session.logs_processed_count = created_logs
-        session.anomalies_count = created_anomalies
-        session.end_time = timezone.now()
-        try:
-            with_db_retry(
-                lambda: session.save(update_fields=["logs_processed_count", "anomalies_count", "end_time"])
-            )
-        except DatabaseError:
-            return Response(
-                {
-                    "detail": (
-                        "Логи обработаны, но база данных временно недоступна для финализации сессии. "
-                        "Проверьте подключение к PostgreSQL и повторите запрос позже."
-                    )
-                },
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
 
         return Response(
             {
-                "session_id": session.id,
-                "logs_processed": created_logs,
-                "anomalies_detected": created_anomalies,
+                "session_id": result.session_id,
+                "logs_processed": result.logs_processed,
+                "anomalies_detected": result.anomalies_detected,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -343,31 +192,3 @@ class LogEntryViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["uri", "user_agent", "client_ip"]
 
 
-class StatsView(APIView):
-    """
-    GET /api/stats/
-    Сводная статистика: количество логов, аномалий, алертов по типам.
-    """
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request: Request) -> Response:
-        from django.db.models import Count
-        total_logs = LogEntry.objects.count()
-        total_anomalies = DetectedAnomaly.objects.count()
-        total_alerts = Alert.objects.filter(status="new").count()
-        by_method = dict(
-            DetectedAnomaly.objects.values("detection_method").annotate(c=Count("id")).values_list("detection_method", "c")
-        )
-        by_type = dict(
-            DetectedAnomaly.objects.filter(anomaly_type__isnull=False)
-            .values("anomaly_type__code")
-            .annotate(c=Count("id"))
-            .values_list("anomaly_type__code", "c")
-        )
-        return Response({
-            "total_log_entries": total_logs,
-            "total_anomalies": total_anomalies,
-            "new_alerts_count": total_alerts,
-            "anomalies_by_method": by_method,
-            "anomalies_by_type": by_type,
-        })

@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "django_filters",
     "corsheaders",
     "analysis",
+    "ui",
 ]
 
 MIDDLEWARE = [
@@ -89,6 +90,11 @@ USE_I18N = True
 USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# --- Auth redirects for UI ---
+LOGIN_URL = "/ui/login/"
+LOGIN_REDIRECT_URL = "/ui/"
+LOGOUT_REDIRECT_URL = "/ui/login/"
+
 # --- REST Framework ---
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
@@ -98,11 +104,10 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.BasicAuthentication",
     ],
-    "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.UserRateThrottle",
-    ],
+    # Не используем глобальный UserRateThrottle: низкий лимит (100/ч) давал 429
+    # при открытии Swagger, опросе алертов в UI и обычной работе с API.
+    # Ограничение частоты — только на загрузку логов (см. LogUploadThrottle).
     "DEFAULT_THROTTLE_RATES": {
-        "user": "100/hour",
         "log_upload": "10/min",
     },
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
