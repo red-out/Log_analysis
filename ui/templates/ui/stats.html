@@ -5,26 +5,26 @@
 <div class="ui-wide">
   <div class="row g-3">
     <div class="col-12">
-      <div class="card border-0">
+      <div class="card border-0 page-header-card">
         <div class="card-body">
-          <h4 class="mb-1">Статистика</h4>
-          <p class="muted mb-3">
-            Данные по <strong>алертам</strong> (созданным в выбранном интервале) и по <strong>аномалиям</strong> (время обнаружения в том же интервале).
-            Сравнение с предыдущим периодом — тот же календарный отрезок длины {{ period_days }} дн., сразу перед выбранным диапазоном ({{ prev_period_label }}).
+          <h1 class="page-title mb-2">Статистика</h1>
+          <p class="page-lead mb-3">
+            <strong>Алерты</strong> по времени создания и <strong>аномалии</strong> по времени обнаружения в выбранном интервале.
+            Сравнение с предыдущим периодом той же длины ({{ period_days }} дн.): {{ prev_period_label }}.
           </p>
 
-          <form method="get" class="row g-2 align-items-end filter-bar w-100 mb-4">
+          <form method="get" class="row g-2 align-items-end filter-bar w-100 mb-0">
             <div class="col-12 col-md">
-              <label class="form-label muted small mb-0">С даты</label>
-              <input type="date" name="date_from" value="{{ filter_date_from }}" class="form-control form-control-sm bg-dark text-light border-secondary w-100" />
+              <label class="form-label mb-0">С даты</label>
+              <input type="date" name="date_from" value="{{ filter_date_from }}" class="form-control form-control-sm w-100" />
             </div>
             <div class="col-12 col-md">
-              <label class="form-label muted small mb-0">По дату</label>
-              <input type="date" name="date_to" value="{{ filter_date_to }}" class="form-control form-control-sm bg-dark text-light border-secondary w-100" />
+              <label class="form-label mb-0">По дату</label>
+              <input type="date" name="date_to" value="{{ filter_date_to }}" class="form-control form-control-sm w-100" />
             </div>
             <div class="col-12 col-md-auto d-flex flex-wrap gap-2 align-items-end">
               <button type="submit" class="btn btn-primary btn-sm">Показать</button>
-              <a href="{% url 'ui:stats' %}" class="btn btn-outline-light btn-sm">Сброс (30 дней)</a>
+              <a href="{% url 'ui:stats' %}" class="btn btn-ghost btn-sm">Сброс (30 дней)</a>
             </div>
           </form>
         </div>
@@ -34,7 +34,7 @@
     <div class="col-lg-6">
       <div class="card border-0 h-100">
         <div class="card-body">
-          <h6 class="mb-3">Критичность алертов</h6>
+          <h2 class="chart-section-title">Критичность алертов</h2>
           <div style="max-height: 320px;">
             <canvas id="chartRisk" aria-label="Критичность алертов"></canvas>
           </div>
@@ -45,7 +45,7 @@
     <div class="col-lg-6">
       <div class="card border-0 h-100">
         <div class="card-body">
-          <h6 class="mb-3">Статусы алертов</h6>
+          <h2 class="chart-section-title">Статусы алертов</h2>
           <div style="max-height: 320px;">
             <canvas id="chartStatus" aria-label="Статусы алертов"></canvas>
           </div>
@@ -56,7 +56,7 @@
     <div class="col-12">
       <div class="card border-0">
         <div class="card-body">
-          <h6 class="mb-3">Топ‑10 типов аномалий по алертам за период</h6>
+          <h2 class="chart-section-title mb-2">Топ‑10 типов аномалий по алертам</h2>
           <p class="muted small mb-2">Ключевой фактор — код типа аномалии, связанной с алертом (без типа — отдельная категория).</p>
           <div style="max-height: 380px;">
             <canvas id="chartFactors" aria-label="Топ факторов"></canvas>
@@ -68,7 +68,7 @@
     <div class="col-lg-6">
       <div class="card border-0 h-100">
         <div class="card-body">
-          <h6 class="mb-3">Аномалии: сигнатуры / ML / гибрид</h6>
+          <h2 class="chart-section-title">Аномалии: сигнатуры / ML / гибрид</h2>
           <div style="max-height: 320px;">
             <canvas id="chartMethods" aria-label="Методы обнаружения аномалий"></canvas>
           </div>
@@ -79,7 +79,7 @@
     <div class="col-lg-6">
       <div class="card border-0 h-100">
         <div class="card-body">
-          <h6 class="mb-3">Алерты: текущий период vs предыдущий</h6>
+          <h2 class="chart-section-title">Алерты: период vs предыдущий</h2>
           <div style="max-height: 320px;">
             <canvas id="chartCompare" aria-label="Сравнение периодов"></canvas>
           </div>
@@ -94,12 +94,12 @@
   <script>
     (function () {
       const cfg = JSON.parse(document.getElementById('stats-charts-data').textContent);
-      const textColor = '#e6e9f2';
-      const gridColor = 'rgba(230,233,242,0.12)';
+      const textColor = '#e8eaef';
+      const gridColor = 'rgba(255,255,255,0.08)';
       const commonLegend = {
         labels: { color: textColor },
       };
-      const palette = ['#1f6feb', '#9a6700', '#d73a49', '#7a1fa2', '#238636', '#8957e5', '#db61a2', '#a371f7', '#f0883e', '#79c0ff'];
+      const palette = ['#2dd4bf', '#38bdf8', '#fbbf24', '#fb7185', '#a78bfa', '#34d399', '#f472b6', '#22d3ee', '#fcd34d', '#94a3b8'];
 
       Chart.defaults.color = textColor;
       Chart.defaults.borderColor = gridColor;
@@ -169,7 +169,7 @@
           labels: cfg.methods.labels,
           datasets: [{
             data: cfg.methods.values,
-            backgroundColor: ['#d73a49', '#1f6feb', '#8957e5'],
+            backgroundColor: ['#fb7185', '#2dd4bf', '#a78bfa'],
           }],
         },
         options: doughnutOptions,
@@ -183,7 +183,7 @@
           datasets: [{
             label: 'Количество алертов',
             data: [pc.previous, pc.current],
-            backgroundColor: ['#6e7681', '#1f6feb'],
+            backgroundColor: ['#64748b', '#2dd4bf'],
           }],
         },
         options: {

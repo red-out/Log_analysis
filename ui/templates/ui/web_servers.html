@@ -5,27 +5,53 @@
 <div class="ui-wide">
   <div class="row">
     <div class="col-12">
+      <div class="card border-0 page-header-card mb-3">
+        <div class="card-body">
+          <h1 class="page-title">Веб-серверы</h1>
+          <p class="page-lead mb-0">
+            До 100 записей. Редактирование —
+            <a href="/admin/analysis/webserver/">Django Admin</a>.
+          </p>
+        </div>
+      </div>
+
       <div class="card border-0">
         <div class="card-body">
-          <h4 class="mb-1">Веб-серверы</h4>
-          <div class="muted mb-3">Источники логов (до 200 записей). Редактирование — в <a href="/admin/analysis/webserver/">Admin</a>.</div>
+          <form method="get" class="row g-2 align-items-end filter-bar w-100 mb-3">
+            <div class="col-12 col-sm-6 col-md">
+              <label class="form-label mb-0">С даты (создан)</label>
+              <input type="date" name="date_from" value="{{ filter_date_from }}" class="form-control form-control-sm w-100" />
+            </div>
+            <div class="col-12 col-sm-6 col-md">
+              <label class="form-label mb-0">По дату</label>
+              <input type="date" name="date_to" value="{{ filter_date_to }}" class="form-control form-control-sm w-100" />
+            </div>
+            <div class="col-12 col-md">
+              <label class="form-label mb-0">Название</label>
+              <input type="search" name="q" value="{{ filter_q }}" placeholder="Подстрока в имени…" class="form-control form-control-sm w-100" />
+            </div>
+            <div class="col-12 col-md-auto d-flex flex-wrap gap-2 align-items-end">
+              <button type="submit" class="btn btn-primary btn-sm">Применить</button>
+              <a href="{% url 'ui:web_servers' %}" class="btn btn-ghost btn-sm">Сброс</a>
+            </div>
+          </form>
 
           <div class="table-responsive">
-            <table class="table table-dark table-hover align-middle">
+            <table class="table table-ui align-middle">
               <thead>
                 <tr>
                   <th>ID</th>
                   <th>Название</th>
                   <th>Создан</th>
-                  <th>Конфиг (кратко)</th>
+                  <th>Конфиг</th>
                 </tr>
               </thead>
               <tbody>
                 {% for s in web_servers %}
                   <tr>
-                    <td>{{ s.id }}</td>
+                    <td class="font-mono">{{ s.id }}</td>
                     <td>{{ s.name }}</td>
-                    <td>{{ s.created_at|date:"Y-m-d H:i:s" }}</td>
+                    <td class="text-nowrap">{{ s.created_at|date:"Y-m-d H:i:s" }}</td>
                     <td class="muted" style="max-width: 480px;">
                       {% if s.config_json %}
                         <code class="text-break small">{{ s.config_json|truncatechars:200 }}</code>
@@ -35,7 +61,7 @@
                     </td>
                   </tr>
                 {% empty %}
-                  <tr><td colspan="4" class="muted">Веб-серверов пока нет.</td></tr>
+                  <tr><td colspan="4" class="muted">Веб-серверов не найдено.</td></tr>
                 {% endfor %}
               </tbody>
             </table>

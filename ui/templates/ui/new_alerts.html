@@ -5,27 +5,31 @@
 <div class="ui-wide">
   <div class="row">
     <div class="col-12">
+      <div class="card border-0 page-header-card mb-3">
+        <div class="card-body">
+          <h1 class="page-title">Новые алерты</h1>
+          <p class="page-lead mb-0">
+            По умолчанию — статус «Новый». Все алерты —
+            <a href="{% url 'ui:alerts' %}">отдельная страница</a>.
+            <strong class="text-secondary">Нажмите строку</strong>, чтобы развернуть карточку и JSON.
+          </p>
+        </div>
+      </div>
+
       <div class="card border-0">
         <div class="card-body">
-          <h4 class="mb-1">Новые алерты</h4>
-          <div class="muted mb-3">
-            По умолчанию показаны только со статусом «Новый». Можно расширить фильтр статуса или перейти к
-            <a href="{% url 'ui:alerts' %}">всем алертам</a>.
-            Обычные пользователи видят только свои алерты; персонал — все.
-          </div>
-
           <form method="get" class="row g-2 align-items-end filter-bar w-100 mb-3">
             <div class="col-12 col-sm-6 col-md">
-              <label class="form-label muted small mb-0">С даты</label>
-              <input type="date" name="date_from" value="{{ filter_date_from }}" class="form-control form-control-sm bg-dark text-light border-secondary w-100" />
+              <label class="form-label mb-0">С даты</label>
+              <input type="date" name="date_from" value="{{ filter_date_from }}" class="form-control form-control-sm w-100" />
             </div>
             <div class="col-12 col-sm-6 col-md">
-              <label class="form-label muted small mb-0">По дату</label>
-              <input type="date" name="date_to" value="{{ filter_date_to }}" class="form-control form-control-sm bg-dark text-light border-secondary w-100" />
+              <label class="form-label mb-0">По дату</label>
+              <input type="date" name="date_to" value="{{ filter_date_to }}" class="form-control form-control-sm w-100" />
             </div>
             <div class="col-12 col-sm-6 col-md-6 col-lg-2">
-              <label class="form-label muted small mb-0">Критичность</label>
-              <select name="risk_level" class="form-select form-select-sm bg-dark text-light border-secondary w-100">
+              <label class="form-label mb-0">Критичность</label>
+              <select name="risk_level" class="form-select form-select-sm w-100">
                 <option value="">Все</option>
                 {% for value, label in risk_level_choices %}
                   <option value="{{ value }}" {% if filter_risk_level == value %}selected{% endif %}>{{ label }}</option>
@@ -33,8 +37,8 @@
               </select>
             </div>
             <div class="col-12 col-sm-6 col-md-6 col-lg-2">
-              <label class="form-label muted small mb-0">Статус</label>
-              <select name="status" class="form-select form-select-sm bg-dark text-light border-secondary w-100">
+              <label class="form-label mb-0">Статус</label>
+              <select name="status" class="form-select form-select-sm w-100">
                 <option value="all" {% if filter_status == 'all' %}selected{% endif %}>Все статусы</option>
                 {% for value, label in alert_status_choices %}
                   <option value="{{ value }}" {% if filter_status == value %}selected{% endif %}>{{ label }}</option>
@@ -42,17 +46,17 @@
               </select>
             </div>
             <div class="col-12 col-md">
-              <label class="form-label muted small mb-0">Поиск (сообщение или URI)</label>
-              <input type="search" name="q" value="{{ filter_q }}" placeholder="Часть текста…" class="form-control form-control-sm bg-dark text-light border-secondary w-100" />
+              <label class="form-label mb-0">Поиск</label>
+              <input type="search" name="q" value="{{ filter_q }}" placeholder="Сообщение или URI…" class="form-control form-control-sm w-100" />
             </div>
             <div class="col-12 col-md-auto d-flex flex-wrap gap-2 align-items-end">
               <button type="submit" class="btn btn-primary btn-sm">Применить</button>
-              <a href="{% url 'ui:new_alerts' %}" class="btn btn-outline-light btn-sm">Сброс (только «Новый»)</a>
+              <a href="{% url 'ui:new_alerts' %}" class="btn btn-ghost btn-sm">Сброс</a>
             </div>
           </form>
 
           <div class="table-responsive">
-            <table class="table table-dark table-hover align-middle">
+            <table id="new-alerts-expand-table" class="table table-ui align-middle">
               <thead>
                 <tr>
                   <th>ID</th>
@@ -65,11 +69,18 @@
               </thead>
               <tbody>
                 {% for a in alerts %}
-                  <tr>
-                    <td>{{ a.id }}</td>
-                    <td>{{ a.created_at|date:"Y-m-d H:i:s" }}</td>
+                  <tr
+                    class="table-row-expand"
+                    data-expand-root="{{ a.id }}"
+                    role="button"
+                    tabindex="0"
+                    aria-expanded="false"
+                    aria-label="Развернуть алерт {{ a.id }}"
+                  >
+                    <td class="font-mono">{{ a.id }}</td>
+                    <td class="text-nowrap">{{ a.created_at|date:"Y-m-d H:i:s" }}</td>
                     <td>
-                      <span class="badge
+                      <span class="badge badge-risk
                         {% if a.risk_level == 'low' %}badge-low{% endif %}
                         {% if a.risk_level == 'medium' %}badge-medium{% endif %}
                         {% if a.risk_level == 'high' %}badge-high{% endif %}
@@ -78,8 +89,15 @@
                     </td>
                     <td>{% include "ui/includes/alert_status_form.html" %}</td>
                     <td style="max-width: 420px;">{{ a.message }}</td>
-                    <td class="muted" style="max-width: 520px;">
+                    <td class="muted font-mono" style="max-width: 520px;">
                       {% if a.anomaly and a.anomaly.log_entry %}{{ a.anomaly.log_entry.uri }}{% endif %}
+                    </td>
+                  </tr>
+                  <tr class="detail-row d-none" data-expand-detail="{{ a.id }}">
+                    <td colspan="6" class="p-0 border-0">
+                      <div class="detail-panel px-3 py-3">
+                        {% include "ui/includes/alert_detail_body.html" with a=a %}
+                      </div>
                     </td>
                   </tr>
                 {% empty %}
@@ -88,9 +106,15 @@
               </tbody>
             </table>
           </div>
+
+          {{ alert_details_by_id|json_script:"ui-alert-details-by-id" }}
         </div>
       </div>
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+  {% include "ui/includes/table_expand_script.html" with table_id="new-alerts-expand-table" json_script_id="ui-alert-details-by-id" %}
 {% endblock %}

@@ -61,6 +61,7 @@ class Command(BaseCommand):
 
         created_logs = 0
         created_anomalies = 0
+        lines_skipped = 0
         last_session_id = None
 
         for file_path in file_paths:
@@ -78,10 +79,12 @@ class Command(BaseCommand):
             last_session_id = result.session_id
             created_logs += result.logs_processed
             created_anomalies += result.anomalies_detected
+            lines_skipped += result.lines_skipped
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Готово. last_session_id={last_session_id}, logs_processed={created_logs}, anomalies_detected={created_anomalies}"
+                f"Готово. last_session_id={last_session_id}, logs_processed={created_logs}, "
+                f"anomalies_detected={created_anomalies}, lines_skipped={lines_skipped}"
             )
         )
 

@@ -8,9 +8,10 @@
 """
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 
 from django.db import DatabaseError
 from django.utils import timezone
@@ -19,6 +20,8 @@ from analysis.models import Alert, AnalysisSession, AnomalyType, DetectedAnomaly
 from analysis.services.ml_engine import IsolationForestEngine
 from analysis.services.parser import NginxAccessLogParser, ParsedLogLine
 from analysis.services.risk import calculate_risk_level
+
+logger = logging.getLogger(__name__)
 
 
 def with_db_retry(callable_fn, retries: int = 3, base_delay_sec: float = 0.5):
@@ -36,9 +39,17 @@ def with_db_retry(callable_fn, retries: int = 3, base_delay_sec: float = 0.5):
 
 @dataclass(frozen=True)
 class IngestResult:
+    """
+    Результат одного прогона ingest.
+
+    lines_skipped — строки без сохранённого LogEntry: нераспознанный combined
+    (непустые, не комментарии) или ошибка сохранения в БД.
+    """
+
     session_id: int
     logs_processed: int
     anomalies_detected: int
+    lines_skipped: int = 0
 
 
 def ingest_parsed_lines(
@@ -65,19 +76,39 @@ def ingest_parsed_lines(
 
     created_logs = 0
     created_anomalies = 0
+    lines_skipped = 0
+    skipped_anomaly_writes = 0
+    skipped_alert_writes = 0
 
     for parsed in parsed_lines:
         try:
             log_entry = with_db_retry(
-                lambda: parser.create_log_entry(
-                    parsed,
+                lambda p=parsed: parser.create_log_entry(
+                    p,
                     web_server=web_server,
                     analysis_session=session,
                 )
             )
-        except DatabaseError:
+        except DatabaseError as e:
+            lines_skipped += 1
+            logger.warning(
+                "ingest: не удалось сохранить LogEntry (session_id=%s, ip=%s, uri=%r): %s",
+                session.id,
+                parsed.client_ip,
+                (parsed.uri or "")[:200],
+                e,
+            )
             continue
-        except Exception:
+        except Exception as e:
+            lines_skipped += 1
+            logger.warning(
+                "ingest: ошибка при сохранении LogEntry (session_id=%s, ip=%s, uri=%r): %s",
+                session.id,
+                parsed.client_ip,
+                (parsed.uri or "")[:200],
+                e,
+                exc_info=True,
+            )
             continue
 
         created_logs += 1
@@ -129,18 +160,25 @@ def ingest_parsed_lines(
 
         try:
             anomaly = with_db_retry(
-                lambda: DetectedAnomaly.objects.create(
-                    log_entry=log_entry,
+                lambda le=log_entry, at=anomaly_type, dm=detection_method, pred=prediction, rl=risk_level: DetectedAnomaly.objects.create(
+                    log_entry=le,
                     analysis_session=session,
-                    anomaly_type=anomaly_type,
-                    detection_method=detection_method,
-                    confidence_score=prediction.confidence_score,
-                    model_score=prediction.raw_score,
-                    explanation=prediction.explanation,
-                    risk_level=risk_level,
+                    anomaly_type=at,
+                    detection_method=dm,
+                    confidence_score=pred.confidence_score,
+                    model_score=pred.raw_score,
+                    explanation=pred.explanation,
+                    risk_level=rl,
                 )
             )
-        except DatabaseError:
+        except DatabaseError as e:
+            skipped_anomaly_writes += 1
+            logger.warning(
+                "ingest: не удалось сохранить DetectedAnomaly (session_id=%s, log_entry_id=%s): %s",
+                session.id,
+                log_entry.id,
+                e,
+            )
             continue
 
         created_anomalies += 1
@@ -148,15 +186,35 @@ def ingest_parsed_lines(
         if risk_level in {"high", "critical"}:
             try:
                 with_db_retry(
-                    lambda: Alert.objects.create(
-                        anomaly=anomaly,
+                    lambda an=anomaly, rl=risk_level, expl=prediction.explanation: Alert.objects.create(
+                        anomaly=an,
                         recipient=created_by,
-                        risk_level=risk_level,
-                        message=f"Обнаружена аномалия #{anomaly.id}: {prediction.explanation[:200]}",
+                        risk_level=rl,
+                        message=f"Обнаружена аномалия #{an.id}: {expl[:200]}",
                     )
                 )
-            except DatabaseError:
-                continue
+            except DatabaseError as e:
+                skipped_alert_writes += 1
+                logger.warning(
+                    "ingest: не удалось сохранить Alert (session_id=%s, anomaly_id=%s): %s",
+                    session.id,
+                    anomaly.id,
+                    e,
+                )
+
+    if lines_skipped:
+        logger.warning(
+            "ingest: сессия %s завершена с lines_skipped=%s (ошибки сохранения LogEntry).",
+            session.id,
+            lines_skipped,
+        )
+    if skipped_anomaly_writes or skipped_alert_writes:
+        logger.warning(
+            "ingest: сессия %s — пропуски при записи аномалий/алертов: anomalies=%s, alerts=%s",
+            session.id,
+            skipped_anomaly_writes,
+            skipped_alert_writes,
+        )
 
     session.logs_processed_count = created_logs
     session.anomalies_count = created_anomalies
@@ -169,6 +227,7 @@ def ingest_parsed_lines(
         session_id=session.id,
         logs_processed=created_logs,
         anomalies_detected=created_anomalies,
+        lines_skipped=lines_skipped,
     )
 
 
@@ -183,12 +242,40 @@ def ingest_text(
     Принять текст лог-файла, распарсить и выполнить ingest.
     """
     p = NginxAccessLogParser()
-    parsed_iter = (pl for pl in (p.parse_line(line) for line in text.splitlines()) if pl is not None)
-    return ingest_parsed_lines(
-        parsed_lines=parsed_iter,
+    parsed_lines: List[ParsedLogLine] = []
+    skipped_parse = 0
+    parse_samples: List[str] = []
+
+    for line in text.splitlines():
+        pl = p.parse_line(line)
+        if pl is not None:
+            parsed_lines.append(pl)
+            continue
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        skipped_parse += 1
+        if len(parse_samples) < 5:
+            parse_samples.append(stripped[:200])
+
+    if skipped_parse:
+        logger.warning(
+            "ingest: пропущено %s строк с нераспознанным форматом combined (первые фрагменты): %s",
+            skipped_parse,
+            parse_samples,
+        )
+
+    result = ingest_parsed_lines(
+        parsed_lines=parsed_lines,
         created_by=created_by,
         web_server=web_server,
         skip_analysis=skip_analysis,
+    )
+    return IngestResult(
+        session_id=result.session_id,
+        logs_processed=result.logs_processed,
+        anomalies_detected=result.anomalies_detected,
+        lines_skipped=skipped_parse + result.lines_skipped,
     )
 
 

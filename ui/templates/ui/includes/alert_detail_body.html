@@ -1,0 +1,86 @@
+{# Детальная панель алерта #}
+<div class="detail-panel-inner">
+  <h3 class="detail-section-title">Алерт</h3>
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <dl class="row detail-dl mb-0">
+        <dt class="col-sm-4">ID</dt>
+        <dd class="col-sm-8 font-mono">{{ a.id }}</dd>
+        <dt class="col-sm-4">Создан</dt>
+        <dd class="col-sm-8">{{ a.created_at|date:"Y-m-d H:i:s" }}</dd>
+        <dt class="col-sm-4">Статус</dt>
+        <dd class="col-sm-8">{{ a.get_status_display }} <span class="muted">({{ a.status }})</span></dd>
+        <dt class="col-sm-4">Уровень риска</dt>
+        <dd class="col-sm-8"><span class="badge badge-risk {% if a.risk_level == 'low' %}badge-low{% elif a.risk_level == 'medium' %}badge-medium{% elif a.risk_level == 'high' %}badge-high{% elif a.risk_level == 'critical' %}badge-critical{% endif %}">{{ a.get_risk_level_display }}</span> ({{ a.risk_level }})</dd>
+        <dt class="col-sm-4">Получатель</dt>
+        <dd class="col-sm-8">{% if a.recipient %}{{ a.recipient.username }}{% else %}—{% endif %}</dd>
+      </dl>
+    </div>
+    <div class="col-lg-6">
+      <p class="small muted mb-1">Сообщение</p>
+      <p class="mb-0 text-break">{{ a.message }}</p>
+    </div>
+  </div>
+
+  {% if a.anomaly %}
+    {% with an=a.anomaly %}
+      {% with le=an.log_entry %}
+    <h3 class="detail-section-title mt-4">Связанная аномалия</h3>
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <dl class="row detail-dl mb-0">
+          <dt class="col-sm-4">ID аномалии</dt>
+          <dd class="col-sm-8 font-mono">{{ an.id }}</dd>
+          <dt class="col-sm-4">Время обнаружения</dt>
+          <dd class="col-sm-8">{{ an.detected_at|date:"Y-m-d H:i:s" }}</dd>
+          <dt class="col-sm-4">Метод детекции</dt>
+          <dd class="col-sm-8">{{ an.get_detection_method_display }}</dd>
+          <dt class="col-sm-4">Уровень риска</dt>
+          <dd class="col-sm-8">{{ an.get_risk_level_display }} ({{ an.risk_level }})</dd>
+          <dt class="col-sm-4">Уверенность</dt>
+          <dd class="col-sm-8">{{ an.confidence_score|floatformat:4 }}</dd>
+          <dt class="col-sm-4">Оценка модели</dt>
+          <dd class="col-sm-8">{% if an.model_score is not None %}{{ an.model_score|floatformat:4 }}{% else %}—{% endif %}</dd>
+          <dt class="col-sm-4">Ложное срабатывание</dt>
+          <dd class="col-sm-8">{% if an.is_false_positive %}да{% else %}нет{% endif %}</dd>
+          <dt class="col-sm-4">Сессия анализа</dt>
+          <dd class="col-sm-8 font-mono">{% if an.analysis_session_id %}{{ an.analysis_session_id }}{% else %}—{% endif %}</dd>
+        </dl>
+      </div>
+      <div class="col-lg-6">
+        <dl class="row detail-dl mb-0">
+          <dt class="col-sm-4">Тип (код)</dt>
+          <dd class="col-sm-8 font-mono">{% if an.anomaly_type %}{{ an.anomaly_type.code }}{% else %}—{% endif %}</dd>
+          <dt class="col-sm-4">Тип (название)</dt>
+          <dd class="col-sm-8">{% if an.anomaly_type %}{{ an.anomaly_type.name }}{% else %}—{% endif %}</dd>
+          <dt class="col-sm-4">Тяжесть типа</dt>
+          <dd class="col-sm-8">{% if an.anomaly_type %}{{ an.anomaly_type.severity }}{% else %}—{% endif %}</dd>
+        </dl>
+      </div>
+    </div>
+    <h4 class="h6 text-secondary mt-3 mb-2">Объяснение аномалии</h4>
+    <p class="mb-0 text-break">{{ an.explanation }}</p>
+
+    {% if le %}
+      <h4 class="h6 text-secondary mt-3 mb-2">Запись лога</h4>
+      <dl class="row detail-dl mb-2">
+        <dt class="col-sm-3">ID</dt><dd class="col-sm-9 font-mono">{{ le.id }}</dd>
+        <dt class="col-sm-3">Время</dt><dd class="col-sm-9">{{ le.timestamp|date:"Y-m-d H:i:s" }}</dd>
+        <dt class="col-sm-3">IP</dt><dd class="col-sm-9 font-mono">{{ le.client_ip }}</dd>
+        <dt class="col-sm-3">Метод / код</dt><dd class="col-sm-9">{{ le.method }} / {{ le.status_code }}</dd>
+      </dl>
+      <p class="small muted mb-1">URI</p>
+      <p class="font-mono small text-break mb-2">{{ le.uri }}</p>
+      <p class="small muted mb-1">Исходная строка</p>
+      <pre class="raw-line-preview font-mono small">{{ le.raw_line }}</pre>
+    {% endif %}
+      {% endwith %}
+    {% endwith %}
+  {% else %}
+    <p class="muted mt-4">Аномалия не привязана.</p>
+  {% endif %}
+
+  <h3 class="detail-section-title mt-4">JSON</h3>
+  <p class="small muted mb-2">Полный объект алерта, как в API (вложенная аномалия с полным <code>log_entry</code>).</p>
+  <pre class="json-scroll-pre font-mono small mb-0" data-role="json-target" aria-label="JSON алерта"></pre>
+</div>

@@ -1,11 +1,11 @@
-<form method="post" action="{% url 'ui:alert_set_status' a.id %}" class="d-inline-block">
+<form method="post" action="{% url 'ui:alert_set_status' a.id %}" class="d-inline-block" onclick="event.stopPropagation()">
   {% csrf_token %}
   <input type="hidden" name="next" value="{{ request.get_full_path }}" />
   <label class="visually-hidden" for="alert-status-{{ a.id }}">Статус алерта {{ a.id }}</label>
   <select
     id="alert-status-{{ a.id }}"
     name="status"
-    class="form-select form-select-sm bg-dark text-light border-secondary"
+    class="form-select form-select-sm"
     style="min-width: 12rem;"
     onchange="this.form.submit()"
   >

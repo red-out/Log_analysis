@@ -1,0 +1,768 @@
+/* Log Analysis UI — единая тёмная тема */
+
+:root {
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --bg-deep: #06080d;
+  --bg-page: #0a0e14;
+  --bg-elevated: #111620;
+  --bg-card: #121826;
+  --bg-input: rgba(8, 12, 20, 0.75);
+
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --text: #e8eaef;
+  --text-secondary: #9aa3b2;
+  --text-tertiary: #6b7280;
+
+  --accent: #2dd4bf;
+  --accent-dim: rgba(45, 212, 191, 0.14);
+  --accent-hover: #5eead4;
+  --accent-pressed: #14b8a6;
+
+  --danger: #fb7185;
+  --warning: #fbbf24;
+  --info: #38bdf8;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --shadow-card: 0 1px 0 var(--border-subtle), 0 12px 40px rgba(0, 0, 0, 0.35);
+  --nav-h: 3.5rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body.theme-app {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text);
+  background-color: var(--bg-page);
+  background-image:
+    radial-gradient(ellipse 120% 80% at 50% -30%, rgba(45, 212, 191, 0.09), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 0%, rgba(56, 189, 248, 0.05), transparent 45%);
+  background-attachment: fixed;
+}
+
+/* ——— Типографика ——— */
+.theme-app h1,
+.theme-app h2,
+.theme-app h3,
+.theme-app h4,
+.theme-app h5,
+.theme-app h6 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.theme-app .page-title {
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.35rem;
+}
+
+.theme-app .page-lead {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  max-width: 62ch;
+}
+
+.theme-app .text-muted,
+.theme-app .muted {
+  color: var(--text-secondary) !important;
+}
+
+.theme-app a:not(.btn):not(.nav-brand):not(.stretched-link) {
+  color: var(--accent);
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.theme-app a:not(.btn):not(.nav-brand):not(.stretched-link):hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+/* ——— Навбар ——— */
+.theme-app .app-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+  height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(10, 14, 20, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.theme-app .app-navbar .container-fluid {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 1680px;
+  margin: 0 auto;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+
+.theme-app .nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.03em;
+  color: var(--text) !important;
+  text-decoration: none !important;
+}
+
+.theme-app .nav-brand-mark {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(145deg, var(--accent-dim), transparent);
+  border: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.theme-app .nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+@media (max-width: 991.98px) {
+  .theme-app .nav-links {
+    padding: 0.75rem 0 0.5rem;
+    width: 100%;
+  }
+}
+
+.theme-app .nav-links .nav-link {
+  color: var(--text-secondary) !important;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.45rem 0.75rem !important;
+  border-radius: var(--radius-sm);
+  text-decoration: none !important;
+  transition: color 0.15s, background 0.15s;
+}
+
+.theme-app .nav-links .nav-link:hover {
+  color: var(--text) !important;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.theme-app .nav-links .nav-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.theme-app .nav-user {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.theme-app .app-navbar .navbar-toggler {
+  border-color: var(--border-default);
+}
+
+/* ——— Layout ——— */
+.theme-app .layout-main {
+  max-width: 1680px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 1.5rem 1.25rem 3rem;
+}
+
+.theme-app main.container-fluid {
+  max-width: 1680px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-top: 1.5rem;
+  padding-bottom: 3rem;
+}
+
+.theme-app .ui-wide {
+  max-width: 1680px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+/* ——— Карточки ——— */
+.theme-app .card {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-card);
+  color: var(--text);
+}
+
+.theme-app .card-body {
+  padding: 1.35rem 1.5rem;
+}
+
+.theme-app .page-header-card .card-body {
+  padding: 1.5rem 1.65rem 1.35rem;
+}
+
+/* ——— Кнопки ——— */
+.theme-app .btn-primary {
+  --bs-btn-bg: #0d9488;
+  --bs-btn-border-color: #0f766e;
+  --bs-btn-hover-bg: #14b8a6;
+  --bs-btn-hover-border-color: #2dd4bf;
+  --bs-btn-active-bg: #0f766e;
+  --bs-btn-active-border-color: #115e59;
+  --bs-btn-color: #042f2e;
+  --bs-btn-hover-color: #022c22;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 1.1rem;
+}
+
+.theme-app .btn-primary:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.theme-app .btn-ghost {
+  --bs-btn-color: var(--text-secondary);
+  --bs-btn-border-color: var(--border-default);
+  --bs-btn-hover-color: var(--text);
+  --bs-btn-hover-bg: rgba(255, 255, 255, 0.06);
+  --bs-btn-hover-border-color: var(--border-strong);
+  --bs-btn-active-color: var(--text);
+  --bs-btn-active-bg: rgba(255, 255, 255, 0.09);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+}
+
+.theme-app .btn-outline-light {
+  /* переопределение под тему */
+  --bs-btn-color: var(--text-secondary);
+  --bs-btn-border-color: var(--border-default);
+  --bs-btn-hover-color: var(--text);
+  --bs-btn-hover-bg: rgba(255, 255, 255, 0.07);
+  --bs-btn-hover-border-color: var(--border-strong);
+}
+
+/* ——— Формы ——— */
+.theme-app .form-label {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+}
+
+.theme-app .form-control,
+.theme-app .form-select {
+  background-color: var(--bg-input) !important;
+  border: 1px solid var(--border-default) !important;
+  color: var(--text) !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: 0.875rem;
+}
+
+.theme-app .form-control::placeholder {
+  color: var(--text-tertiary);
+}
+
+.theme-app .form-control:focus,
+.theme-app .form-select:focus {
+  border-color: rgba(45, 212, 191, 0.45) !important;
+  box-shadow: 0 0 0 3px var(--accent-dim) !important;
+}
+
+.theme-app .form-check-input {
+  background-color: var(--bg-input);
+  border-color: var(--border-default);
+}
+
+.theme-app .form-check-input:checked {
+  background-color: #0d9488;
+  border-color: #14b8a6;
+}
+
+/* ——— Алерты Django ——— */
+.theme-app .alert {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.theme-app .alert-success {
+  background: rgba(45, 212, 191, 0.12);
+  color: #99f6e4;
+  border-color: rgba(45, 212, 191, 0.25);
+}
+
+.theme-app .alert-danger,
+.theme-app .alert-error {
+  background: rgba(251, 113, 133, 0.12);
+  color: #fecdd3;
+  border-color: rgba(251, 113, 133, 0.25);
+}
+
+.theme-app .alert-warning {
+  background: rgba(251, 191, 36, 0.1);
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.22);
+}
+
+.theme-app .alert-info {
+  background: rgba(56, 189, 248, 0.1);
+  color: #bae6fd;
+  border-color: rgba(56, 189, 248, 0.22);
+}
+
+/* ——— Таблицы ——— */
+.theme-app .table-ui {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--text);
+  margin-bottom: 0;
+  font-size: 0.875rem;
+}
+
+.theme-app .table-ui thead th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-default);
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.theme-app .table-ui tbody td {
+  border-color: var(--border-subtle);
+  vertical-align: middle;
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+}
+
+.theme-app .table-ui tbody tr:hover td {
+  background: rgba(45, 212, 191, 0.04);
+}
+
+.theme-app tr.table-row-expand {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.theme-app tr.table-row-expand:hover td {
+  background: rgba(45, 212, 191, 0.06);
+}
+
+.theme-app tr.table-row-expand.is-expanded td {
+  background: rgba(45, 212, 191, 0.1);
+}
+
+.theme-app tr.table-row-expand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.theme-app .detail-panel {
+  background: rgba(0, 0, 0, 0.28);
+  border-top: 1px solid var(--border-subtle);
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Вложенные Bootstrap .row дают отрицательные горизонтальные margin и вылезают из <td> */
+.theme-app .detail-panel-inner {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+.theme-app .detail-panel-inner .row {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.theme-app .detail-panel-inner .row > [class*="col-"] {
+  min-width: 0;
+}
+
+.theme-app tr[data-expand-detail] > td {
+  max-width: 100%;
+}
+
+.theme-app .detail-section-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 650;
+  color: var(--text-tertiary);
+  margin-bottom: 0.75rem;
+}
+
+.theme-app .detail-dl dt {
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.theme-app .detail-dl dd {
+  font-size: 0.875rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.theme-app .raw-line-preview {
+  max-height: 120px;
+  overflow: auto;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.theme-app .json-scroll-pre {
+  max-height: 360px;
+  overflow: auto;
+  padding: 1rem 1.1rem;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+.theme-app .table-responsive {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  overflow-y: visible;
+  max-width: 100%;
+}
+
+.theme-app #anomalies-expand-table,
+.theme-app #new-alerts-expand-table {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* ——— Бейджи риска ——— */
+.theme-app .badge-risk {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.35em 0.6em;
+  border-radius: 6px;
+}
+
+.theme-app .badge-low {
+  background: rgba(56, 189, 248, 0.2);
+  color: #7dd3fc;
+}
+
+.theme-app .badge-medium {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fcd34d;
+}
+
+.theme-app .badge-high {
+  background: rgba(251, 113, 133, 0.18);
+  color: #fda4af;
+}
+
+.theme-app .badge-critical {
+  background: rgba(192, 132, 252, 0.2);
+  color: #e9d5ff;
+}
+
+.theme-app .badge-neutral {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.35em 0.55em;
+  border-radius: 6px;
+}
+
+/* ——— Dashboard stat cards ——— */
+.theme-app .stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .theme-app .stat-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.theme-app .stat-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.35rem;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.theme-app .stat-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--info));
+  opacity: 0.85;
+}
+
+.theme-app .stat-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+.theme-app .stat-card .stretched-link::after {
+  border-radius: var(--radius-lg);
+}
+
+.theme-app .stat-card-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-tertiary);
+  margin-bottom: 0.35rem;
+}
+
+.theme-app .stat-card-value {
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.theme-app .stat-card-icon {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+.theme-app .stat-card-icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* ——— Страницы форм ——— */
+.theme-app .form-page-shell {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: calc(100vh - var(--nav-h) - 3rem);
+  padding-top: 2rem;
+  padding-bottom: 3rem;
+}
+
+.theme-app .form-page-inner {
+  width: 100%;
+  max-width: 560px;
+}
+
+.theme-app .form-page-card .card-body {
+  padding: 2rem 1.75rem;
+}
+
+@media (min-width: 768px) {
+  .theme-app .form-page-card .card-body {
+    padding: 2.35rem 2.25rem;
+  }
+}
+
+/* ——— Toast ——— */
+.theme-app .toast {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+}
+
+/* ——— Utilities ——— */
+.theme-app .font-mono {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+}
+
+.theme-app .text-danger {
+  color: #fda4af !important;
+}
+
+.theme-app .chart-section-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  margin-bottom: 1rem;
+}
+
+.theme-app code {
+  font-family: var(--font-mono);
+  font-size: 0.84em;
+  padding: 0.15em 0.45em;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-subtle);
+  color: var(--accent-hover);
+}
+
+/* ——— Страница входа (без навбара) ——— */
+body.theme-login {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background-color: var(--bg-page);
+  background-image:
+    radial-gradient(ellipse 100% 70% at 50% -20%, rgba(45, 212, 191, 0.12), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(56, 189, 248, 0.06), transparent 45%);
+  background-attachment: fixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.theme-login .auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.theme-login .auth-card .card-body {
+  padding: 2.25rem 2rem;
+}
+
+.theme-login .auth-brand {
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
+
+.theme-login .auth-brand-mark {
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto 1rem;
+  border-radius: var(--radius-md);
+  background: linear-gradient(145deg, var(--accent-dim), transparent);
+  border: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.theme-login h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.theme-login .auth-sub {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-top: 0.35rem;
+}
+
+.theme-login .form-control {
+  background-color: var(--bg-input) !important;
+  border: 1px solid var(--border-default) !important;
+  color: var(--text) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+.theme-login .form-control:focus {
+  border-color: rgba(45, 212, 191, 0.45) !important;
+  box-shadow: 0 0 0 3px var(--accent-dim) !important;
+}
+
+.theme-login .form-label {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.theme-login .alert-danger,
+.theme-login .alert-error {
+  background: rgba(251, 113, 133, 0.12);
+  color: #fecdd3;
+  border: 1px solid rgba(251, 113, 133, 0.25);
+  border-radius: var(--radius-md);
+}
+
+.theme-login .alert-success {
+  background: rgba(45, 212, 191, 0.12);
+  color: #99f6e4;
+  border: 1px solid rgba(45, 212, 191, 0.25);
+  border-radius: var(--radius-md);
+}
+
+.theme-login .text-danger {
+  color: #fda4af !important;
+}
+
+.theme-login .btn-primary {
+  --bs-btn-bg: #0d9488;
+  --bs-btn-border-color: #0f766e;
+  --bs-btn-hover-bg: #14b8a6;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+}

@@ -6,7 +6,7 @@ from pathlib import Path
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import DatabaseError
-from django.db.models import Count, Q
+from django.db.models import Count, Exists, OuterRef, Q
 from django.utils import timezone
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -15,8 +15,29 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from analysis.models import Alert, AnalysisSession, DetectedAnomaly, LogEntry, WebServer
+from analysis.serializers import AlertSerializer, DetectedAnomalySerializer, LogEntrySerializer
 from analysis.services.ingest import ingest_text
 from .forms import UploadLogForm, ImportFromFsForm
+
+
+def _anomaly_ui_json_dict(anomaly: DetectedAnomaly) -> dict:
+    """Те же поля, что в API, плюс полный log_entry (включая raw_line и features)."""
+    data = dict(DetectedAnomalySerializer(anomaly).data)
+    if anomaly.log_entry_id:
+        data["log_entry"] = LogEntrySerializer(anomaly.log_entry).data
+    return data
+
+
+def _alert_ui_json_dict(alert: Alert) -> dict:
+    """Полный алерт для UI: вложенная аномалия с полным log_entry."""
+    data = dict(AlertSerializer(alert).data)
+    if alert.anomaly_id:
+        anom = alert.anomaly
+        ann = dict(DetectedAnomalySerializer(anom).data)
+        if anom.log_entry_id:
+            ann["log_entry"] = LogEntrySerializer(anom.log_entry).data
+        data["anomaly"] = ann
+    return data
 
 
 def _is_staff(user) -> bool:
@@ -30,7 +51,12 @@ def _parse_date_param(raw: str):
 
 
 def _alerts_queryset_for_user(user):
-    qs = Alert.objects.select_related("anomaly", "anomaly__log_entry")
+    qs = Alert.objects.select_related(
+        "anomaly",
+        "anomaly__log_entry",
+        "anomaly__anomaly_type",
+        "recipient",
+    )
     if not user.is_staff:
         qs = qs.filter(recipient=user)
     return qs
@@ -91,14 +117,63 @@ def dashboard(request):
 
 @login_required
 def sessions(request):
-    qs = AnalysisSession.objects.select_related("created_by").order_by("-start_time")[:200]
-    return render(request, "ui/sessions.html", {"sessions": qs})
+    qs = AnalysisSession.objects.select_related("created_by")
+
+    df = _parse_date_param(request.GET.get("date_from") or "")
+    dt = _parse_date_param(request.GET.get("date_to") or "")
+    if df:
+        qs = qs.filter(start_time__date__gte=df)
+    if dt:
+        qs = qs.filter(start_time__date__lte=dt)
+
+    user_q = (request.GET.get("created_by") or "").strip()
+    if user_q:
+        qs = qs.filter(created_by__username__icontains=user_q)
+
+    mv = (request.GET.get("model_version") or "").strip()
+    if mv:
+        qs = qs.filter(model_version__icontains=mv)
+
+    qs = qs.order_by("-start_time")[:100]
+    return render(
+        request,
+        "ui/sessions.html",
+        {
+            "sessions": qs,
+            "filter_date_from": request.GET.get("date_from") or "",
+            "filter_date_to": request.GET.get("date_to") or "",
+            "filter_created_by": user_q,
+            "filter_model_version": mv,
+        },
+    )
 
 
 @login_required
 def web_servers(request):
-    qs = WebServer.objects.all().order_by("name")[:200]
-    return render(request, "ui/web_servers.html", {"web_servers": qs})
+    qs = WebServer.objects.all()
+
+    df = _parse_date_param(request.GET.get("date_from") or "")
+    dt = _parse_date_param(request.GET.get("date_to") or "")
+    if df:
+        qs = qs.filter(created_at__date__gte=df)
+    if dt:
+        qs = qs.filter(created_at__date__lte=dt)
+
+    name_q = (request.GET.get("q") or "").strip()
+    if name_q:
+        qs = qs.filter(name__icontains=name_q)
+
+    qs = qs.order_by("name")[:100]
+    return render(
+        request,
+        "ui/web_servers.html",
+        {
+            "web_servers": qs,
+            "filter_date_from": request.GET.get("date_from") or "",
+            "filter_date_to": request.GET.get("date_to") or "",
+            "filter_q": name_q,
+        },
+    )
 
 
 _RISK_LABELS_RU = {
@@ -236,16 +311,72 @@ def stats(request):
 
 @login_required
 def log_entries(request):
-    qs = (
-        LogEntry.objects.select_related("web_server", "analysis_session")
-        .order_by("-timestamp")[:200]
+    alert_exists = Alert.objects.filter(anomaly__log_entry_id=OuterRef("pk"))
+    qs = LogEntry.objects.select_related("web_server", "analysis_session").annotate(
+        has_alert=Exists(alert_exists),
     )
-    return render(request, "ui/log_entries.html", {"log_entries": qs})
+
+    df = _parse_date_param(request.GET.get("date_from") or "")
+    dt = _parse_date_param(request.GET.get("date_to") or "")
+    if df:
+        qs = qs.filter(timestamp__date__gte=df)
+    if dt:
+        qs = qs.filter(timestamp__date__lte=dt)
+
+    filter_ip = (request.GET.get("client_ip") or "").strip()
+    if filter_ip:
+        qs = qs.filter(client_ip=filter_ip)
+
+    filter_status = (request.GET.get("status_code") or "").strip()
+    if filter_status.isdigit():
+        qs = qs.filter(status_code=int(filter_status))
+
+    filter_method = (request.GET.get("method") or "").strip().upper()
+    if filter_method:
+        qs = qs.filter(method=filter_method)
+
+    filter_session = (request.GET.get("analysis_session") or "").strip()
+    if filter_session.isdigit():
+        qs = qs.filter(analysis_session_id=int(filter_session))
+
+    filter_web_server = (request.GET.get("web_server") or "").strip()
+    if filter_web_server.isdigit():
+        qs = qs.filter(web_server_id=int(filter_web_server))
+
+    has_alert = (request.GET.get("has_alert") or "").strip()
+    if has_alert == "yes":
+        qs = qs.filter(has_alert=True)
+    elif has_alert == "no":
+        qs = qs.filter(has_alert=False)
+
+    qs = qs.order_by("-timestamp")[:100]
+
+    return render(
+        request,
+        "ui/log_entries.html",
+        {
+            "log_entries": qs,
+            "web_servers_list": WebServer.objects.order_by("name"),
+            "filter_date_from": request.GET.get("date_from") or "",
+            "filter_date_to": request.GET.get("date_to") or "",
+            "filter_client_ip": filter_ip,
+            "filter_status_code": filter_status,
+            "filter_method": filter_method,
+            "filter_analysis_session": filter_session,
+            "filter_web_server": filter_web_server,
+            "filter_has_alert": has_alert,
+        },
+    )
 
 
 @login_required
 def anomalies(request):
-    qs = DetectedAnomaly.objects.select_related("log_entry", "anomaly_type", "analysis_session")
+    qs = DetectedAnomaly.objects.select_related(
+        "log_entry",
+        "log_entry__web_server",
+        "anomaly_type",
+        "analysis_session",
+    )
 
     df = _parse_date_param(request.GET.get("date_from") or "")
     dt = _parse_date_param(request.GET.get("date_to") or "")
@@ -262,10 +393,13 @@ def anomalies(request):
     if q:
         qs = qs.filter(Q(explanation__icontains=q) | Q(log_entry__uri__icontains=q))
 
-    qs = qs.order_by("-detected_at")[:200]
+    qs = qs.order_by("-detected_at")[:100]
+    anomalies_list = list(qs)
+    anomaly_details_by_id = {str(a.id): _anomaly_ui_json_dict(a) for a in anomalies_list}
 
     ctx = {
-        "anomalies": qs,
+        "anomalies": anomalies_list,
+        "anomaly_details_by_id": anomaly_details_by_id,
         "filter_date_from": request.GET.get("date_from") or "",
         "filter_date_to": request.GET.get("date_to") or "",
         "filter_risk_level": risk,
@@ -302,7 +436,7 @@ def _filtered_alerts(request, *, default_status: str):
     if q:
         qs = qs.filter(Q(message__icontains=q) | Q(anomaly__log_entry__uri__icontains=q))
 
-    qs = qs.order_by("-created_at")[:200]
+    qs = qs.order_by("-created_at")[:100]
 
     return qs, {
         "filter_date_from": request.GET.get("date_from") or "",
@@ -318,7 +452,9 @@ def _filtered_alerts(request, *, default_status: str):
 @login_required
 def new_alerts(request):
     alerts_qs, filter_ctx = _filtered_alerts(request, default_status="new")
-    ctx = {"alerts": alerts_qs, **filter_ctx}
+    alerts_list = list(alerts_qs)
+    alert_details_by_id = {str(a.id): _alert_ui_json_dict(a) for a in alerts_list}
+    ctx = {"alerts": alerts_list, "alert_details_by_id": alert_details_by_id, **filter_ctx}
     return render(request, "ui/new_alerts.html", ctx)
 
 
@@ -344,7 +480,8 @@ def upload_logs(request):
 
             messages.success(
                 request,
-                f"Загрузка завершена. session_id={result.session_id}, logs={result.logs_processed}, anomalies={result.anomalies_detected}",
+                f"Загрузка завершена. session_id={result.session_id}, logs={result.logs_processed}, "
+                f"anomalies={result.anomalies_detected}, lines_skipped={result.lines_skipped}",
             )
             return redirect("ui:dashboard")
     else:
@@ -384,6 +521,7 @@ def import_from_fs(request):
 
             total_logs = 0
             total_anomalies = 0
+            total_skipped = 0
             last_session_id = None
 
             for fp in sorted(files):
@@ -405,10 +543,12 @@ def import_from_fs(request):
                 last_session_id = result.session_id
                 total_logs += result.logs_processed
                 total_anomalies += result.anomalies_detected
+                total_skipped += result.lines_skipped
 
             messages.success(
                 request,
-                f"Импорт завершён. last_session_id={last_session_id}, logs={total_logs}, anomalies={total_anomalies}",
+                f"Импорт завершён. last_session_id={last_session_id}, logs={total_logs}, "
+                f"anomalies={total_anomalies}, lines_skipped={total_skipped}",
             )
             return redirect("ui:dashboard")
     else:

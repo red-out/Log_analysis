@@ -115,6 +115,7 @@ class LogUploadView(APIView):
                 "session_id": result.session_id,
                 "logs_processed": result.logs_processed,
                 "anomalies_detected": result.anomalies_detected,
+                "lines_skipped": result.lines_skipped,
             },
             status=status.HTTP_201_CREATED,
         )

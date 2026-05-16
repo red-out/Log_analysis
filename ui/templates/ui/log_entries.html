@@ -5,13 +5,65 @@
 <div class="ui-wide">
   <div class="row">
     <div class="col-12">
+      <div class="card border-0 page-header-card mb-3">
+        <div class="card-body">
+          <h1 class="page-title">Записи логов</h1>
+          <p class="page-lead mb-0">До 100 записей после фильтров, новые сверху. Колонка «Алерт» — есть ли хотя бы один алерт по аномалии этой строки (без поля в БД у лога).</p>
+        </div>
+      </div>
+
       <div class="card border-0">
         <div class="card-body">
-          <h4 class="mb-1">Записи логов</h4>
-          <div class="muted mb-3">Последние 200 записей (новые сверху).</div>
+          <form method="get" class="row g-2 align-items-end filter-bar w-100 mb-3">
+            <div class="col-12 col-sm-6 col-md-6 col-lg">
+              <label class="form-label mb-0">С даты</label>
+              <input type="date" name="date_from" value="{{ filter_date_from }}" class="form-control form-control-sm w-100" />
+            </div>
+            <div class="col-12 col-sm-6 col-md-6 col-lg">
+              <label class="form-label mb-0">По дату</label>
+              <input type="date" name="date_to" value="{{ filter_date_to }}" class="form-control form-control-sm w-100" />
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label mb-0">IP</label>
+              <input type="text" name="client_ip" value="{{ filter_client_ip }}" placeholder="127.0.0.1" class="form-control form-control-sm w-100" />
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label mb-0">Код ответа</label>
+              <input type="text" name="status_code" value="{{ filter_status_code }}" inputmode="numeric" placeholder="200" class="form-control form-control-sm w-100" />
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label mb-0">Метод</label>
+              <input type="text" name="method" value="{{ filter_method }}" placeholder="GET" class="form-control form-control-sm w-100" />
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label mb-0">Сессия (id)</label>
+              <input type="text" name="analysis_session" value="{{ filter_analysis_session }}" inputmode="numeric" class="form-control form-control-sm w-100" />
+            </div>
+            <div class="col-12 col-md-6 col-lg">
+              <label class="form-label mb-0">Веб-сервер</label>
+              <select name="web_server" class="form-select form-select-sm w-100">
+                <option value="">Все</option>
+                {% for ws in web_servers_list %}
+                  <option value="{{ ws.id }}" {% if filter_web_server and filter_web_server|add:0 == ws.id %}selected{% endif %}>{{ ws.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+              <label class="form-label mb-0">Алерт</label>
+              <select name="has_alert" class="form-select form-select-sm w-100">
+                <option value="" {% if not filter_has_alert %}selected{% endif %}>Все</option>
+                <option value="yes" {% if filter_has_alert == "yes" %}selected{% endif %}>Есть алерт</option>
+                <option value="no" {% if filter_has_alert == "no" %}selected{% endif %}>Нет алерта</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-auto d-flex flex-wrap gap-2 align-items-end">
+              <button type="submit" class="btn btn-primary btn-sm">Применить</button>
+              <a href="{% url 'ui:log_entries' %}" class="btn btn-ghost btn-sm">Сброс</a>
+            </div>
+          </form>
 
           <div class="table-responsive">
-            <table class="table table-dark table-hover align-middle">
+            <table class="table table-ui align-middle">
               <thead>
                 <tr>
                   <th>ID</th>
@@ -20,6 +72,7 @@
                   <th>Метод</th>
                   <th>Код</th>
                   <th>URI</th>
+                  <th>Алерт</th>
                   <th>Сессия</th>
                   <th>Веб-сервер</th>
                 </tr>
@@ -27,15 +80,22 @@
               <tbody>
                 {% for e in log_entries %}
                   <tr>
-                    <td>{{ e.id }}</td>
-                    <td>{{ e.timestamp|date:"Y-m-d H:i:s" }}</td>
-                    <td>{{ e.client_ip }}</td>
-                    <td>{{ e.method }}</td>
+                    <td class="font-mono">{{ e.id }}</td>
+                    <td class="text-nowrap">{{ e.timestamp|date:"Y-m-d H:i:s" }}</td>
+                    <td class="font-mono">{{ e.client_ip }}</td>
+                    <td><span class="badge-neutral">{{ e.method }}</span></td>
                     <td>{{ e.status_code }}</td>
-                    <td class="muted" style="max-width: 360px;">{{ e.uri|truncatechars:120 }}</td>
+                    <td class="muted font-mono" style="max-width: 280px;">{{ e.uri|truncatechars:100 }}</td>
+                    <td>
+                      {% if e.has_alert %}
+                        <span class="badge badge-risk badge-high">да</span>
+                      {% else %}
+                        <span class="muted">—</span>
+                      {% endif %}
+                    </td>
                     <td>
                       {% if e.analysis_session_id %}
-                        {{ e.analysis_session_id }}
+                        <span class="font-mono">{{ e.analysis_session_id }}</span>
                       {% else %}
                         <span class="muted">—</span>
                       {% endif %}
@@ -49,7 +109,7 @@
                     </td>
                   </tr>
                 {% empty %}
-                  <tr><td colspan="8" class="muted">Записей пока нет.</td></tr>
+                  <tr><td colspan="9" class="muted">Записей не найдено.</td></tr>
                 {% endfor %}
               </tbody>
             </table>

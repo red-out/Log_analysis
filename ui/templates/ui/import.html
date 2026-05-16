@@ -3,12 +3,12 @@
 {% block content %}
   <div class="form-page-shell">
     <div class="form-page-inner">
-      <div class="card border-0 form-page-card shadow-sm">
+      <div class="card border-0 form-page-card">
         <div class="card-body">
-          <h4 class="mb-2 fw-semibold">Импорт логов из файловой системы</h4>
-          <p class="muted small mb-4">
-            Путь задаётся <strong>на сервере/в контейнере</strong>. Пример:
-            <code class="text-break">/app/sample_access.log</code>
+          <h1 class="page-title mb-2">Импорт с сервера</h1>
+          <p class="page-lead small mb-4">
+            Путь на машине, где крутится Django (или в контейнере), например
+            <code>/app/media/...</code> или <code>/var/log/nginx/access.log</code>.
           </p>
 
           <form method="post" class="d-grid gap-3">
@@ -31,8 +31,9 @@
               <label class="form-label">{{ form.web_server.label }}</label>
               {{ form.web_server }}
             </div>
-            <div class="pt-1">
+            <div class="pt-1 d-flex flex-wrap gap-2">
               <button class="btn btn-primary" type="submit">Импортировать</button>
+              <a class="btn btn-ghost" href="{% url 'ui:dashboard' %}">Отмена</a>
             </div>
           </form>
         </div>
