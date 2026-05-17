@@ -3,9 +3,14 @@ Management-команда для обучения Isolation Forest на нако
 Использование: python manage.py train_model [--min-samples 100]
 """
 from django.core.management.base import BaseCommand
-from django.db.models import Count
+
 from analysis.models import LogEntry
-from analysis.services.ml_engine import IsolationForestEngine, FEATURE_ORDER
+from analysis.services.ml_engine import IsolationForestEngine
+
+
+def _training_features(features: dict) -> bool:
+    """Строки с сигнатурами атак не участвуют в обучении «нормы»."""
+    return not bool(features.get("has_attack_signature"))
 
 
 class Command(BaseCommand):
@@ -22,7 +27,11 @@ class Command(BaseCommand):
             "--contamination",
             type=float,
             default=0.05,
-            help="Доля аномалий (contamination) для Isolation Forest (0.05 = 5%%).",
+            help=(
+                "Гиперпараметр Isolation Forest: ожидаемая доля выбросов в обучающей "
+                "выборке (0.05 = 5%%). Не отражает «грязность» загрузки — атаки с "
+                "has_attack_signature=1 из обучения исключаются отдельно."
+            ),
         )
 
     def handle(self, *args, **options):
@@ -41,14 +50,32 @@ class Command(BaseCommand):
             return
 
         feature_dicts = []
+        skipped_attacks = 0
         for row in qs.iterator():
             f = row.get("features") or {}
-            if isinstance(f, dict):
-                feature_dicts.append(f)
+            if not isinstance(f, dict):
+                continue
+            if not _training_features(f):
+                skipped_attacks += 1
+                continue
+            feature_dicts.append(f)
             if len(feature_dicts) >= 50000:  # ограничение по памяти
                 break
 
-        self.stdout.write(f"Обучение на {len(feature_dicts)} записях, contamination={contamination}...")
+        if len(feature_dicts) < min_samples:
+            self.stderr.write(
+                self.style.WARNING(
+                    f"Записей для обучения (без атак): {len(feature_dicts)} "
+                    f"(пропущено с сигнатурами атак: {skipped_attacks}). "
+                    f"Нужно минимум {min_samples}."
+                )
+            )
+            return
+
+        self.stdout.write(
+            f"Обучение на {len(feature_dicts)} записях "
+            f"(пропущено атак: {skipped_attacks}), contamination={contamination}..."
+        )
         engine = IsolationForestEngine(contamination=contamination)
         try:
             engine.fit(feature_dicts)

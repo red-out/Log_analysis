@@ -225,8 +225,17 @@ def stats(request):
     current_alerts_count = alerts_qs.count()
     previous_alerts_count = prev_alerts_qs.count()
 
+    anomalies_qs = DetectedAnomaly.objects.filter(detected_at__gte=start, detected_at__lte=end)
+    if not request.user.is_staff:
+        anomalies_qs = anomalies_qs.filter(
+            Q(analysis_session__created_by=request.user)
+            | Q(log_entry__analysis_session__created_by=request.user)
+        ).distinct()
+
     risk_order = ["low", "medium", "high", "critical"]
-    risk_map = {r["risk_level"]: r["c"] for r in alerts_qs.values("risk_level").annotate(c=Count("id"))}
+    risk_map = {
+        r["risk_level"]: r["c"] for r in anomalies_qs.values("risk_level").annotate(c=Count("id"))
+    }
     risk_labels = []
     risk_values = []
     for k in risk_order:
@@ -262,13 +271,6 @@ def stats(request):
     if not factor_labels:
         factor_labels = ["Нет данных"]
         factor_values = [0]
-
-    anomalies_qs = DetectedAnomaly.objects.filter(detected_at__gte=start, detected_at__lte=end)
-    if not request.user.is_staff:
-        anomalies_qs = anomalies_qs.filter(
-            Q(analysis_session__created_by=request.user)
-            | Q(log_entry__analysis_session__created_by=request.user)
-        ).distinct()
 
     method_order = ["signature", "ml", "hybrid"]
     method_map = {
@@ -480,8 +482,7 @@ def upload_logs(request):
 
             messages.success(
                 request,
-                f"Загрузка завершена. session_id={result.session_id}, logs={result.logs_processed}, "
-                f"anomalies={result.anomalies_detected}, lines_skipped={result.lines_skipped}",
+                f"Найдено аномалий: {result.anomalies_detected}",
             )
             return redirect("ui:dashboard")
     else:
@@ -519,10 +520,7 @@ def import_from_fs(request):
                 messages.error(request, "Не найдено файлов .log/.txt по указанному пути.")
                 return render(request, "ui/import.html", {"form": form})
 
-            total_logs = 0
             total_anomalies = 0
-            total_skipped = 0
-            last_session_id = None
 
             for fp in sorted(files):
                 try:
@@ -540,15 +538,11 @@ def import_from_fs(request):
                     messages.error(request, "База данных временно недоступна. Импорт прерван.")
                     return render(request, "ui/import.html", {"form": form})
 
-                last_session_id = result.session_id
-                total_logs += result.logs_processed
                 total_anomalies += result.anomalies_detected
-                total_skipped += result.lines_skipped
 
             messages.success(
                 request,
-                f"Импорт завершён. last_session_id={last_session_id}, logs={total_logs}, "
-                f"anomalies={total_anomalies}, lines_skipped={total_skipped}",
+                f"Найдено аномалий: {total_anomalies}",
             )
             return redirect("ui:dashboard")
     else:

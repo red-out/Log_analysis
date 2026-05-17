@@ -3,7 +3,6 @@ REST API: загрузка логов, список аномалий, алерт
 """
 from __future__ import annotations
 
-import io
 import logging
 from typing import Any
 
@@ -18,7 +17,7 @@ from rest_framework.throttling import UserRateThrottle
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 
-from .models import Alert, AnalysisSession, DetectedAnomaly, LogEntry, AnomalyType, WebServer
+from .models import Alert, AnalysisSession, DetectedAnomaly, LogEntry, WebServer
 from .serializers import (
     DetectedAnomalySerializer,
     AlertSerializer,

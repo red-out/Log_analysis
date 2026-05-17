@@ -79,57 +79,7 @@
       {% block content %}{% endblock %}
     </main>
 
-    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080">
-      <div
-        id="alertToast"
-        class="toast text-bg-dark border border-secondary"
-        role="alert"
-        aria-live="assertive"
-        aria-atomic="true"
-      >
-        <div class="d-flex">
-          <div class="toast-body" id="alertToastBody">Новый алерт</div>
-          <button
-            type="button"
-            class="btn-close btn-close-white me-2 m-auto"
-            data-bs-dismiss="toast"
-            aria-label="Закрыть"
-          ></button>
-        </div>
-      </div>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     {% block extra_js %}{% endblock %}
-    <script>
-      (function () {
-        let lastSeenId = null;
-        async function poll() {
-          try {
-            const resp = await fetch("/api/alerts/?status=new&ordering=-created_at", { headers: { Accept: "application/json" } });
-            if (!resp.ok) return;
-            const data = await resp.json();
-            const results = data && data.results ? data.results : [];
-            if (!results.length) return;
-            const top = results[0];
-            if (lastSeenId === null) {
-              lastSeenId = top.id;
-              return;
-            }
-            if (top.id !== lastSeenId) {
-              lastSeenId = top.id;
-              const risk = top.risk_level ? top.risk_level.toUpperCase() : "NEW";
-              const msg = top.message || "Новый алерт";
-              document.getElementById("alertToastBody").textContent = "[" + risk + "] " + msg;
-              const toastEl = document.getElementById("alertToast");
-              const toast = bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 6000 });
-              toast.show();
-            }
-          } catch (e) {}
-        }
-        setInterval(poll, 8000);
-        poll();
-      })();
-    </script>
   </body>
 </html>

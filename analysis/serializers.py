@@ -7,7 +7,6 @@ from .models import (
     LogEntry,
     DetectedAnomaly,
     Alert,
-    AnomalyType,
     WebServer,
 )
 
@@ -46,12 +45,6 @@ class LogEntrySerializer(serializers.ModelSerializer):
             "analysis_session_id",
         ]
         read_only_fields = fields
-
-
-class AnomalyTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = AnomalyType
-        fields = ("id", "code", "name", "severity")
 
 
 class DetectedAnomalySerializer(serializers.ModelSerializer):

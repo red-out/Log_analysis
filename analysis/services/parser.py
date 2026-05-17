@@ -113,17 +113,27 @@ class NginxAccessLogParser:
         parsed: ParsedLogLine,
         web_server: Optional[WebServer] = None,
         analysis_session=None,
+        ip_counts: dict[str, int] | None = None,
     ) -> LogEntry:
         """
         Создать и сохранить LogEntry с извлечёнными признаками.
 
+        :param ip_counts: счётчик запросов по IP в рамках текущего ingest (без запросов в БД).
+
         :raises ValueError: при невалидных данных после full_clean.
         """
+        if ip_counts is not None:
+            ip_request_count = ip_counts.get(parsed.client_ip, 0)
+            ip_counts[parsed.client_ip] = ip_request_count + 1
+        else:
+            ip_request_count = 0
+
         features = extract_features_from_parsed(
             client_ip=parsed.client_ip,
             uri=parsed.uri,
             user_agent=parsed.user_agent,
             method=parsed.method,
+            ip_request_count=ip_request_count,
         )
         entry = LogEntry(
             web_server=web_server,

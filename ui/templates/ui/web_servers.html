@@ -43,7 +43,6 @@
                   <th>ID</th>
                   <th>Название</th>
                   <th>Создан</th>
-                  <th>Конфиг</th>
                 </tr>
               </thead>
               <tbody>
@@ -52,16 +51,9 @@
                     <td class="font-mono">{{ s.id }}</td>
                     <td>{{ s.name }}</td>
                     <td class="text-nowrap">{{ s.created_at|date:"Y-m-d H:i:s" }}</td>
-                    <td class="muted" style="max-width: 480px;">
-                      {% if s.config_json %}
-                        <code class="text-break small">{{ s.config_json|truncatechars:200 }}</code>
-                      {% else %}
-                        <span class="muted">—</span>
-                      {% endif %}
-                    </td>
                   </tr>
                 {% empty %}
-                  <tr><td colspan="4" class="muted">Веб-серверов не найдено.</td></tr>
+                  <tr><td colspan="3" class="muted">Веб-серверов не найдено.</td></tr>
                 {% endfor %}
               </tbody>
             </table>

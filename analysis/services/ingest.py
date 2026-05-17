@@ -23,6 +23,43 @@ from analysis.services.risk import calculate_risk_level
 
 logger = logging.getLogger(__name__)
 
+# Приоритет классификации: от более критичных OWASP-классов к мягким сигналам.
+_ATTACK_TYPE_CODES = (
+    "SQLI",
+    "XSS",
+    "XXE",
+    "CMD_INJECTION",
+    "PATH_TRAVERSAL",
+    "LDAP_INJECTION",
+    "SSRF",
+    "SENSITIVE_FILE_SCAN",
+    "OPEN_REDIRECT",
+    "INVALID_METHOD",
+)
+_SOFT_TYPE_CODES = (
+    "LONG_URI_PROBE",
+    "UNUSUAL_UA",
+)
+_FEATURE_TO_ATTACK_CODE = {
+    "has_sqli_signature": "SQLI",
+    "has_xss_signature": "XSS",
+    "has_xxe_signature": "XXE",
+    "has_cmd_injection_signature": "CMD_INJECTION",
+    "has_path_traversal_signature": "PATH_TRAVERSAL",
+    "has_ldap_injection_signature": "LDAP_INJECTION",
+    "has_ssrf_signature": "SSRF",
+    "has_sensitive_file_scan_signature": "SENSITIVE_FILE_SCAN",
+    "has_open_redirect_signature": "OPEN_REDIRECT",
+    "has_invalid_method": "INVALID_METHOD",
+}
+_FEATURE_TO_SOFT_CODE = {
+    "has_long_uri_probe": "LONG_URI_PROBE",
+    "has_unusual_ua": "UNUSUAL_UA",
+}
+_CODE_TO_ATTACK_FEATURE = {v: k for k, v in _FEATURE_TO_ATTACK_CODE.items()}
+_CODE_TO_SOFT_FEATURE = {v: k for k, v in _FEATURE_TO_SOFT_CODE.items()}
+ML_UNCLASSIFIED_CODE = "ML_UNCLASSIFIED"
+
 
 def with_db_retry(callable_fn, retries: int = 3, base_delay_sec: float = 0.5):
     last_error = None
@@ -79,14 +116,16 @@ def ingest_parsed_lines(
     lines_skipped = 0
     skipped_anomaly_writes = 0
     skipped_alert_writes = 0
+    ip_counts: dict[str, int] = {}
 
     for parsed in parsed_lines:
         try:
             log_entry = with_db_retry(
-                lambda p=parsed: parser.create_log_entry(
+                lambda p=parsed, counts=ip_counts: parser.create_log_entry(
                     p,
                     web_server=web_server,
                     analysis_session=session,
+                    ip_counts=counts,
                 )
             )
         except DatabaseError as e:
@@ -118,56 +157,44 @@ def ingest_parsed_lines(
         features = log_entry.features or {}
         prediction = ml_engine.predict(features)
 
-        has_sqli = bool(int(features.get("has_sqli_signature", 0)))
-        has_xss = bool(int(features.get("has_xss_signature", 0)))
-        has_path_traversal = bool(int(features.get("has_path_traversal_signature", 0)))
-        has_sensitive_file_scan = bool(int(features.get("has_sensitive_file_scan_signature", 0)))
-        has_invalid_method = bool(int(features.get("has_invalid_method", 0)))
-        has_signature = any(
-            [
-                has_sqli,
-                has_xss,
-                has_path_traversal,
-                has_sensitive_file_scan,
-                has_invalid_method,
-            ]
-        )
+        has_attack_signature = bool(int(features.get("has_attack_signature", 0)))
+        has_soft_signal = bool(int(features.get("has_soft_signal", 0)))
+        has_rule_signal = has_attack_signature or has_soft_signal
 
         is_anomaly_ml = prediction.is_anomaly and prediction.confidence_score >= anomaly_threshold
-        if not (is_anomaly_ml or has_signature):
+        if not (is_anomaly_ml or has_rule_signal):
             continue
 
-        if is_anomaly_ml and has_signature:
+        if is_anomaly_ml and has_rule_signal:
             detection_method = DetectedAnomaly.DetectionMethod.HYBRID
-        elif has_signature:
+        elif has_rule_signal:
             detection_method = DetectedAnomaly.DetectionMethod.SIGNATURE
         else:
             detection_method = DetectedAnomaly.DetectionMethod.ML
 
-        anomaly_type = _resolve_anomaly_type(
-            has_sqli=has_sqli,
-            has_xss=has_xss,
-            has_path_traversal=has_path_traversal,
-            has_sensitive_file_scan=has_sensitive_file_scan,
-            has_invalid_method=has_invalid_method,
-            is_anomaly_ml=is_anomaly_ml,
-        )
+        anomaly_type = _resolve_anomaly_type(features, is_anomaly_ml=is_anomaly_ml)
+        type_code = getattr(anomaly_type, "code", None) if anomaly_type else None
 
-        risk_level = calculate_risk_level(
-            confidence_score=prediction.confidence_score,
-            severity=getattr(anomaly_type, "severity", None),
-        )
+        risk_level = calculate_risk_level(severity=getattr(anomaly_type, "severity", None))
+
+        explanation = prediction.explanation
+        if detection_method == DetectedAnomaly.DetectionMethod.ML:
+            explanation = (
+                f"{explanation} "
+                "Класс атаки не определён сигнатурами (сценарий zero-day / неизвестный паттерн). "
+                "Рекомендуется ручная проверка аналитиком."
+            )
 
         try:
             anomaly = with_db_retry(
-                lambda le=log_entry, at=anomaly_type, dm=detection_method, pred=prediction, rl=risk_level: DetectedAnomaly.objects.create(
+                lambda le=log_entry, at=anomaly_type, dm=detection_method, pred=prediction, rl=risk_level, expl=explanation: DetectedAnomaly.objects.create(
                     log_entry=le,
                     analysis_session=session,
                     anomaly_type=at,
                     detection_method=dm,
                     confidence_score=pred.confidence_score,
                     model_score=pred.raw_score,
-                    explanation=pred.explanation,
+                    explanation=expl,
                     risk_level=rl,
                 )
             )
@@ -183,14 +210,21 @@ def ingest_parsed_lines(
 
         created_anomalies += 1
 
-        if risk_level in {"high", "critical"}:
+        if _should_create_alert(risk_level, detection_method, type_code):
+            if detection_method == DetectedAnomaly.DetectionMethod.ML:
+                alert_msg = (
+                    f"[Проверка] Возможная неизвестная угроза (только ML) #{anomaly.id}: "
+                    f"{explanation[:200]}"
+                )
+            else:
+                alert_msg = f"Обнаружена аномалия #{anomaly.id}: {explanation[:200]}"
             try:
                 with_db_retry(
-                    lambda an=anomaly, rl=risk_level, expl=prediction.explanation: Alert.objects.create(
+                    lambda an=anomaly, rl=risk_level, msg=alert_msg: Alert.objects.create(
                         anomaly=an,
                         recipient=created_by,
                         risk_level=rl,
-                        message=f"Обнаружена аномалия #{an.id}: {expl[:200]}",
+                        message=msg,
                     )
                 )
             except DatabaseError as e:
@@ -279,26 +313,32 @@ def ingest_text(
     )
 
 
-def _resolve_anomaly_type(
-    *,
-    has_sqli: bool,
-    has_xss: bool,
-    has_path_traversal: bool,
-    has_sensitive_file_scan: bool,
-    has_invalid_method: bool,
-    is_anomaly_ml: bool,
-):
-    if has_sqli:
-        return AnomalyType.objects.filter(code="SQLI").first()
-    if has_xss:
-        return AnomalyType.objects.filter(code="XSS").first()
-    if has_path_traversal:
-        return AnomalyType.objects.filter(code="PATH_TRAVERSAL").first()
-    if has_sensitive_file_scan:
-        return AnomalyType.objects.filter(code="SENSITIVE_FILE_SCAN").first()
-    if has_invalid_method:
-        return AnomalyType.objects.filter(code="INVALID_METHOD").first()
+def _type_by_code(code: str):
+    return AnomalyType.objects.filter(code=code).first()
+
+
+def _resolve_anomaly_type(features: dict, *, is_anomaly_ml: bool):
+    for code in _ATTACK_TYPE_CODES:
+        feat = _CODE_TO_ATTACK_FEATURE.get(code)
+        if feat and int(features.get(feat, 0)):
+            return _type_by_code(code)
+    for code in _SOFT_TYPE_CODES:
+        feat = _CODE_TO_SOFT_FEATURE.get(code)
+        if feat and int(features.get(feat, 0)):
+            return _type_by_code(code)
     if is_anomaly_ml:
-        return AnomalyType.objects.filter(code="STAT_ANOMALY").first()
+        return _type_by_code(ML_UNCLASSIFIED_CODE) or _type_by_code("STAT_ANOMALY")
     return None
+
+
+def _should_create_alert(risk_level: str, detection_method: str, type_code: str | None) -> bool:
+    if risk_level in {"high", "critical"}:
+        return True
+    if (
+        detection_method == DetectedAnomaly.DetectionMethod.ML
+        and type_code == ML_UNCLASSIFIED_CODE
+        and risk_level == "medium"
+    ):
+        return True
+    return False
 

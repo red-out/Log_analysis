@@ -184,8 +184,13 @@ class IsolationForestEngine:
         has_sqli = int(features.get("has_sqli_signature", 0))
         has_xss = int(features.get("has_xss_signature", 0))
         has_path_traversal = int(features.get("has_path_traversal_signature", 0))
+        has_cmd = int(features.get("has_cmd_injection_signature", 0))
+        has_ssrf = int(features.get("has_ssrf_signature", 0))
+        has_ldap = int(features.get("has_ldap_injection_signature", 0))
+        has_xxe = int(features.get("has_xxe_signature", 0))
         has_sensitive_file_scan = int(features.get("has_sensitive_file_scan_signature", 0))
         has_invalid_method = int(features.get("has_invalid_method", 0))
+        has_open_redirect = int(features.get("has_open_redirect_signature", 0))
 
         highlight: List[str] = []
         if uri_len > 200:
@@ -208,8 +213,18 @@ class IsolationForestEngine:
             highlight.append("совпадение с сигнатурой SQL-инъекции")
         if has_xss:
             highlight.append("совпадение с сигнатурой XSS")
+        if has_xxe:
+            highlight.append("признаки XXE в запросе")
+        if has_cmd:
+            highlight.append("признаки command injection / RCE")
         if has_path_traversal:
             highlight.append("попытка Path Traversal / LFI/RFI")
+        if has_ldap:
+            highlight.append("признаки LDAP-инъекции")
+        if has_ssrf:
+            highlight.append("признаки SSRF (внутренние хосты, metadata)")
+        if has_open_redirect:
+            highlight.append("подозрительный open redirect")
         if has_sensitive_file_scan:
             highlight.append("сканирование чувствительных файлов и админок (.env, .git, /wp-admin и т.п.)")
         if has_invalid_method:

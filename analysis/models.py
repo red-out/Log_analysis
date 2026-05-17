@@ -12,17 +12,9 @@ User = get_user_model()
 
 
 class WebServer(models.Model):
-    """
-    Источник логов (веб-сервер) и параметры парсинга.
-    """
+    """Источник логов (веб-сервер)."""
 
     name = models.CharField("Название", max_length=150, unique=True)
-    config_json = models.JSONField(
-        "Конфиг парсинга",
-        default=dict,
-        blank=True,
-        help_text="Параметры парсинга и метаданные (формат лога, таймзона и т.д.).",
-    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
