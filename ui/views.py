@@ -4,7 +4,9 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required, user_passes_test
+from functools import wraps
+
+from django.contrib.auth.decorators import login_required
 from django.db import DatabaseError
 from django.db.models import Count, Exists, OuterRef, Q
 from django.utils import timezone
@@ -40,8 +42,23 @@ def _alert_ui_json_dict(alert: Alert) -> dict:
     return data
 
 
-def _is_staff(user) -> bool:
-    return bool(user and user.is_authenticated and user.is_staff)
+STAFF_ONLY_MESSAGE = (
+    "Недостаточно прав. Загрузка и импорт логов доступны только администраторам."
+)
+
+
+def staff_required(view_func):
+    """Требует is_staff; иначе сообщение и редирект на дашборд (не 404/пустой 403)."""
+
+    @login_required
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_staff:
+            messages.error(request, STAFF_ONLY_MESSAGE)
+            return redirect("ui:dashboard")
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped
 
 
 def _parse_date_param(raw: str):
@@ -460,8 +477,7 @@ def new_alerts(request):
     return render(request, "ui/new_alerts.html", ctx)
 
 
-@login_required
-@user_passes_test(_is_staff)
+@staff_required
 def upload_logs(request):
     if request.method == "POST":
         form = UploadLogForm(request.POST, request.FILES)
@@ -491,8 +507,7 @@ def upload_logs(request):
     return render(request, "ui/upload.html", {"form": form})
 
 
-@login_required
-@user_passes_test(_is_staff)
+@staff_required
 def import_from_fs(request):
     if request.method == "POST":
         form = ImportFromFsForm(request.POST)

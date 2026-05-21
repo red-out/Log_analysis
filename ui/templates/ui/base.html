@@ -45,10 +45,14 @@
         <div class="collapse navbar-collapse justify-content-end" id="nav">
           <div class="d-flex flex-column flex-lg-row align-items-lg-center gap-lg-3 w-100 justify-content-lg-between">
             <ul class="navbar-nav nav-links mb-2 mb-lg-0">
-              <li class="nav-item"><a class="nav-link" href="{% url 'ui:upload' %}">Загрузка</a></li>
-              <li class="nav-item"><a class="nav-link" href="{% url 'ui:import' %}">Импорт</a></li>
+              {% if request.user.is_staff %}
+                <li class="nav-item"><a class="nav-link" href="{% url 'ui:upload' %}">Загрузка</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'ui:import' %}">Импорт</a></li>
+              {% endif %}
               <li class="nav-item"><a class="nav-link" href="{% url 'ui:stats' %}">Статистика</a></li>
-              <li class="nav-item"><a class="nav-link" href="/admin/">Django Admin</a></li>
+              {% if request.user.is_staff %}
+                <li class="nav-item"><a class="nav-link" href="/admin/">Django Admin</a></li>
+              {% endif %}
               <li class="nav-item"><a class="nav-link" href="/api/schema/">API</a></li>
             </ul>
             <div class="d-flex flex-wrap align-items-center gap-2">

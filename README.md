@@ -1,99 +1,88 @@
 # Сервис сбора и анализа логов веб-сервера
 
-Дипломный проект: обнаружение аномальных запросов с помощью **гибридного анализа** (сигнатурный поиск + unsupervised ML, Isolation Forest). Развёртывание: Django + **PostgreSQL**, Docker Compose (рекомендуется).
+Дипломный проект: обнаружение аномальных запросов с помощью **гибридного анализа** (сигнатурный поиск + unsupervised ML, Isolation Forest).  
+Стек: **Django 4.2**, **Django REST Framework**, **PostgreSQL**, **Docker Compose**.
+
+Подробное описание архитектуры, моделей и пайплайна — в [README_ARCHITECTURE.md](README_ARCHITECTURE.md).
 
 ---
 
 ## Требования
 
 - **Python 3.10+**
-- **PostgreSQL** (локально или через Docker)
-- **Docker** и **Docker Compose** (рекомендуется для быстрого старта)
+- **PostgreSQL 16** (локально или через Docker)
+- **Docker** и **Docker Compose** (рекомендуется)
 
 ---
 
 ## 1. Запуск через Docker (рекомендуется)
 
-### Шаг 1. Переменные окружения (опционально)
+### Переменные окружения (опционально)
 
-В корне репозитория есть **`.env.example`**. При необходимости скопируйте в `.env` и задайте `DJANGO_SECRET_KEY` и пароли БД для продакшена.
+В корне есть **`.env.example`**. Скопируйте в `.env` и задайте `DJANGO_SECRET_KEY` и пароли БД для продакшена.
 
-### Шаг 2. Сборка и запуск
-
-В корне проекта:
+### Сборка и запуск
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
-Выполняются миграции, поднимаются сервисы **web** и **db**. Приложение: **http://localhost:8000**
+Поднимаются **web** (Django) и **db** (PostgreSQL), выполняются миграции.  
+Приложение: **http://localhost:8000**
 
-### Шаг 3. Данные между перезапусками
-
-- **PostgreSQL** — том Docker `postgres_data` (данные БД не теряются при перезапуске).
-- **Модели ML и медиа** — том `media_data` (каталог `/app/media` в контейнере).
-
-### Шаг 4. Остановка
+Создайте суперпользователя (один раз):
 
 ```bash
-docker-compose down
+docker compose exec web python manage.py createsuperuser
 ```
 
-Удалить контейнеры и тома (включая БД и медиа):
+### Данные между перезапусками
+
+| Том | Содержимое |
+|-----|------------|
+| `postgres_data` | БД (логи, аномалии, сессии, пользователи) |
+| `media_data` | ML-модель `isolation_forest.pkl`, медиа |
+
+### Остановка
 
 ```bash
-docker-compose down -v
+docker compose down          # контейнеры
+docker compose down -v       # + удаление томов (БД и медиа)
 ```
 
-### Служебные команды внутри контейнера
+### Команды внутри контейнера
 
 ```bash
-docker-compose exec web python manage.py train_model --min-samples 100
+docker compose exec web python manage.py train_model --min-samples 100 --contamination 0.05
+docker compose exec web python manage.py import_logs_from_fs --path /app/sample_access_v8.log --created-by admin
 ```
+
+Путь к файлу в контейнере — от корня образа (`/app/...`), код копируется при сборке (`COPY . /app/`).
 
 ---
 
 ## 2. Локальный запуск (без Docker)
 
-Нужен запущенный PostgreSQL и база с учётными данными, совпадающими с переменными окружения (по умолчанию см. `log_analysis/settings.py` и `.env.example`).
-
-### Шаг 1. Виртуальное окружение и зависимости
-
-Из **корня репозитория** (там же, где `manage.py`):
+Нужен PostgreSQL с учётными данными из `log_analysis/settings.py` или `.env`.
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
-# source .venv/bin/activate   # Linux/macOS
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # Linux/macOS
 
 pip install -r requirements.txt
-```
-
-### Шаг 2. Переменные и каталог медиа
-
-```bash
-copy .env.example .env
-# отредактируйте .env: DB_HOST=localhost, пароль БД и т.д.
+copy .env.example .env          # DB_HOST=localhost
 
 mkdir media
-```
-
-Создайте в PostgreSQL пользователя и базу (имена как в `.env` / `settings.py`), затем:
-
-```bash
 python manage.py migrate
 python manage.py createsuperuser
-```
-
-Типы аномалий при необходимости создаются миграцией `0002_populate_anomaly_types`; при отсутствии — через админку (**SQLI**, **XSS**, **STAT_ANOMALY** и др. по миграциям).
-
-### Шаг 3. Запуск сервера
-
-```bash
 python manage.py runserver
 ```
 
-Откройте в браузере: **http://127.0.0.1:8000/ui/** (веб-интерфейс) или **http://127.0.0.1:8000/admin/**.
+Веб-интерфейс: **http://127.0.0.1:8000/ui/**  
+Админка: **http://127.0.0.1:8000/admin/**
+
+Типы аномалий создаются миграциями (`0002`, `0003`, `0007` и др.).
 
 ---
 
@@ -101,31 +90,32 @@ python manage.py runserver
 
 | URL | Описание |
 |-----|----------|
-| **http://localhost:8000/ui/** | Веб-интерфейс (дашборд, загрузка логов, алерты, **статистика** `/ui/stats/`) |
-| **http://localhost:8000/admin/** | Админ-панель Django |
-| **http://localhost:8000/api/schema/** | Swagger UI (документация API) |
-| **http://localhost:8000/api/schema/redoc/** | ReDoc |
-| **http://localhost:8000/api/logs/upload/** | Загрузка лог-файла (POST, только администраторы) |
-| **http://localhost:8000/api/anomalies/** | Обнаруженные аномалии |
-| **http://localhost:8000/api/alerts/** | Алерты |
-| **http://localhost:8000/api/sessions/** | Сессии анализа |
-| **http://localhost:8000/api/log-entries/** | Записи логов |
-
-Сводная статистика с графиками доступна в UI: **`/ui/stats/`** (отдельного REST-эндпоинта `/api/stats/` в проекте нет).
+| http://localhost:8000/ui/ | Веб-интерфейс (дашборд, загрузка, алерты, статистика) |
+| http://localhost:8000/ui/stats/ | Графики (только UI, без REST) |
+| http://localhost:8000/admin/ | Django Admin |
+| http://localhost:8000/api/schema/ | Swagger UI |
+| http://localhost:8000/api/schema/redoc/ | ReDoc |
+| POST http://localhost:8000/api/logs/upload/ | Загрузка лога (администратор) |
+| http://localhost:8000/api/anomalies/ | Аномалии |
+| http://localhost:8000/api/alerts/ | Алерты |
+| http://localhost:8000/api/sessions/ | Сессии анализа |
+| http://localhost:8000/api/log-entries/ | Записи логов |
 
 ---
 
 ## 4. Загрузка логов и анализ
 
-1. Войдите в систему (сессия/UI) или используйте Basic Auth к API.
-2. **POST** `/api/logs/upload/`:
-   - **`multipart/form-data`**: поле **file** — файл `.log` / `.txt` (Nginx/Apache combined), опционально **web_server_id**.
-   - **Сырое тело** (`application/octet-stream` / `text/plain`): весь файл в теле запроса; `web_server_id` можно передать query-параметром `?web_server_id=1`.
+Обработка выполняется единым модулем **`analysis/services/ingest.py`** (API, UI и CLI используют его).
 
-Пример `curl` (после создания суперпользователя):
+1. Войдите в UI (`/ui/login/`) или используйте Basic Auth к API.
+2. **POST** `/api/logs/upload/`:
+   - **multipart**: поле `file` (`.log` / `.txt`), опционально `web_server_id`;
+   - **raw body**: весь файл в теле; `?web_server_id=1` в query.
+
+Пример:
 
 ```bash
-curl -u admin:password -X POST -F "file=@./path/to/access.log" http://localhost:8000/api/logs/upload/
+curl -u admin:password -X POST -F "file=@./access.log" http://localhost:8000/api/logs/upload/
 ```
 
 Ответ:
@@ -139,21 +129,41 @@ curl -u admin:password -X POST -F "file=@./path/to/access.log" http://localhost:
 }
 ```
 
-Поле **`lines_skipped`** — число строк, которые не удалось разобрать как валидную запись combined или не удалось сохранить в БД (детали в логах сервера).
+**`lines_skipped`** — строки с неверным форматом или ошибкой сохранения в БД.
 
-Для каждой успешно сохранённой строки: парсинг → признаки → Isolation Forest → при срабатывании ML/сигнатур создаётся `DetectedAnomaly` и при высоком риске — `Alert`. У аномалий в API есть поле **explanation**.
+### Логика детекции (кратко)
 
-### Загрузка из файловой системы (CLI)
+- Сохраняется `LogEntry` с признаками в `features`.
+- Аномалия, если сработал **ML** (confidence ≥ 0.65) и/или **сигнатуры** (атака или мягкий сигнал).
+- Метод: `hybrid` / `signature` / `ml`; тип из справочника `AnomalyType`; текст в `explanation`.
+- **Alert** — при высоком/критическом риске или ML без класса атаки (medium).
+
+### UI
+
+- **Загрузка файла:** `/ui/upload/` (staff).
+- **Импорт с диска:** `/ui/import/` (staff), путь в контейнере, напр. `/app/sample_access_v8.log`.
+
+### CLI
 
 ```bash
-python manage.py import_logs_from_fs --path /var/log/nginx --recursive --created-by admin
+python manage.py import_logs_from_fs --path ./access.log --created-by admin
+python manage.py import_logs_from_fs --path /var/log/nginx --recursive --skip-analysis
 ```
 
-Флаги:
+| Флаг | Назначение |
+|------|------------|
+| `--web-server-id 1` | Привязка к `WebServer` |
+| `--skip-analysis` | Только `LogEntry`, без детекции |
+| `--recursive` | Обход каталога |
 
-- `--web-server-id 1` — привязка к `WebServer`;
-- `--skip-analysis` — только сохранение `LogEntry` без детекции;
-- один файл: `--path ./access.log`.
+### Тестовые логи
+
+Генератор: `scripts/generate_sample_access_logs.py` (смешение нормального трафика и атак, файлы `sample_access_v3.log` … `v12` в корне репозитория).
+
+```bash
+python scripts/generate_sample_access_logs.py --lines 1000
+python scripts/generate_sample_access_logs.py --only 8 --lines 500
+```
 
 ---
 
@@ -163,7 +173,20 @@ python manage.py import_logs_from_fs --path /var/log/nginx --recursive --created
 python manage.py train_model --min-samples 100 --contamination 0.05
 ```
 
-Модель: `media/models/isolation_forest.pkl` (в Docker — в томе `media_data`).
+| Параметр | Смысл |
+|----------|--------|
+| `--min-samples` | Минимум строк **без атак** для обучения |
+| `--contamination` | Гиперпараметр Isolation Forest (доля выбросов в train), не «грязность» файла |
+
+Из обучения **исключаются** записи с `has_attack_signature=1` в `features`.
+
+Файл модели: `media/models/isolation_forest.pkl` (в Docker — том `media_data`).
+
+**Рекомендуемый порядок:**
+
+1. Импорт с `--skip-analysis` (накопить нормальный трафик).
+2. `train_model`.
+3. Загрузка / импорт с полным анализом.
 
 ---
 
@@ -175,34 +198,28 @@ python manage.py train_model --min-samples 100 --contamination 0.05
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
-├── .env.example
-├── log_analysis/          # настройки Django
-│   ├── settings.py
-│   ├── urls.py
-│   └── ...
-├── analysis/              # модели, API, сервисы
-│   ├── models.py
-│   ├── views.py
-│   ├── serializers.py
-│   ├── urls.py
+├── README.md
+├── README_ARCHITECTURE.md
+├── log_analysis/              # настройки Django
+├── analysis/                  # модели, API, services, migrations
 │   └── services/
+│       ├── ingest.py          # единый пайплайн
 │       ├── parser.py
 │       ├── features.py
 │       ├── ml_engine.py
-│       ├── ingest.py
 │       └── risk.py
-├── ui/                    # веб-интерфейс
-└── ...
+├── ui/                        # веб-интерфейс (templates)
+└── scripts/                   # генератор sample-логов
 ```
 
 ---
 
 ## 7. Безопасность и лимиты
 
-- Загрузка логов: **до 10 запросов в минуту** на эндпоинт (throttle).
-- Размер файла в multipart: до **20 MB** (валидация в сериализаторе).
-- API по умолчанию для **аутентифицированных** пользователей; загрузка логов — только **администраторы**.
-- Для прода задайте **`DJANGO_SECRET_KEY`**, `DEBUG=false`, надёжные пароли БД (см. `.env.example`).
+- Загрузка логов: throttle **10 запросов/мин** (`LogUploadThrottle`).
+- Размер файла (multipart): до **20 MB**.
+- API: **IsAuthenticated**; upload — **IsAdminUser**.
+- Продакшен: `DJANGO_SECRET_KEY`, `DEBUG=false`, надёжные пароли БД.
 
 ---
 

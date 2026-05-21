@@ -1,313 +1,219 @@
-## Описание проекта и архитектуры
+# Архитектура проекта Log_analysis
 
-### 1. Назначение системы
+Дипломный проект: **сбор и анализ access-логов веб-сервера для обнаружения аномальных запросов**.
 
-Сервис реализует дипломный проект по теме:  
-**«Сбор и анализ логов веб‑сервера для обнаружения аномальных запросов»**.
-
-Ключевые особенности:
-
-- **Гибридный анализ**: сигнатурный поиск + unsupervised ML (Isolation Forest).
-- **Self-contained развертывание**: одна Django‑сервис, база — SQLite (файл `db.sqlite3`), без отдельных кластеров.
-- **Интерпретируемость**: в каждом объекте `DetectedAnomaly` есть поле `explanation` с человекопонятным объяснением, почему запрос был признан аномальным.
-
-Основная задача: принимать access‑логи (Nginx/Apache), нормализовать их, выделять признаки, находить аномалии и предоставлять удобный API и админку для анализа.
+Стек: **Django 4.2**, **Django REST Framework**, **PostgreSQL 16**, **scikit-learn** (Isolation Forest), **Docker Compose**.  
+Веб-интерфейс: **Django Templates** (без отдельного SPA). Документация API: **drf-spectacular** (OpenAPI 3, Swagger/ReDoc).
 
 ---
 
-### 2. Высокоуровневая архитектура
+## 1. Назначение и ключевые свойства
 
-Система логически разделена на несколько слоев:
-
-- **Хранение данных (Django models + SQLite)** — описание сущностей и индексов.
-- **Парсинг и извлечение признаков (`analysis/services`)** — доменная логика по работе с логами.
-- **ML‑движок (`ml_engine.py`)** — обучение и предсказание Isolation Forest.
-- **REST API (`views.py`, `serializers.py`, `urls.py`)** — внешние эндпоинты.
-- **Администрирование и служебные операции** — `admin.py`, `management/commands`.
-- **Инфраструктура** — настройки Django, Docker, docker-compose.
+- **Гибридный анализ**: сигнатурные правила (OWASP-ориентированные паттерны) + unsupervised ML (Isolation Forest).
+- **Единый пайплайн обработки** (`analysis/services/ingest.py`) для UI, REST API и CLI — логика не дублируется.
+- **Интерпретируемость**: у каждой `DetectedAnomaly` есть поле `explanation`.
+- **Развёртывание**: Django-приложение + PostgreSQL в Docker Compose; ML-модель на диске в `media/models/`.
 
 ---
 
-### 3. Модель данных (основные сущности)
+## 2. Слои системы
 
-#### 3.1. `WebServer`
+| Слой | Расположение | Назначение |
+|------|--------------|------------|
+| Хранение | `analysis/models.py`, PostgreSQL | Сущности, связи, индексы |
+| Доменная логика | `analysis/services/` | Парсинг, признаки, ML, ingest, риск |
+| REST API | `analysis/views.py`, `serializers.py`, `urls.py` | JSON для внешних клиентов |
+| UI | `ui/views.py`, `ui/templates/` | HTML-интерфейс оператора |
+| Админка | `analysis/admin.py` | Управление данными |
+| CLI | `analysis/management/commands/` | `train_model`, `import_logs_from_fs` |
+| Инфраструктура | `log_analysis/settings.py`, `Dockerfile`, `docker-compose.yml` | Конфигурация и контейнеры |
 
-Справочник источников логов (веб‑серверов).
+### Маршрутизация URL
 
-- `name` — человекочитаемое имя.
-- `config_json` — JSON с параметрами парсинга и метаданными (формат лога, таймзона и т.п.).
-
-Используется для привязки записей лога к конкретному серверу и возможной дальнейшей кастомизации парсинга.
-
-#### 3.2. `AnalysisSession`
-
-Одна сессия анализа — фактически один запуск обработки лог‑файла.
-
-- `start_time`, `end_time` — временные метки.
-- `model_version` — версия ML‑модели, применённой при анализе.
-- `logs_processed_count` — сколько строк лога обработано.
-- `anomalies_count` — сколько аномалий найдено.
-- `created_by` — пользователь, инициировавший анализ.
-
-Позволяет видеть историю запусков и статистику по каждому запуску.
-
-#### 3.3. `LogEntry`
-
-Нормализованная запись access.log (одна строка).
-
-Основные поля:
-
-- `timestamp` — время запроса (**индексировано**, важно для временных запросов).
-- `client_ip` — IP клиента (**индексировано**, важно для поиска по IP).
-- `method`, `uri`, `status_code`, `user_agent`, `raw_line`.
-- `features` — `JSONField` с извлечёнными признаками (для ML и сигнатурного анализа).
-- `web_server`, `analysis_session` — связи с источником и сессией анализа.
-
-На уровне БД заданы индексы:
-
-- по `timestamp`;
-- по `client_ip`;
-- составной индекс `timestamp + client_ip`.
-
-#### 3.4. `AnomalyType`
-
-Справочник типов аномалий, объединяющий сигнатурные и ML‑аномалии:
-
-- `SQLI` — SQL‑инъекции,
-- `XSS` — XSS‑атаки,
-- `STAT_ANOMALY` — статистическая аномалия (ML),
-- `PATH_TRAVERSAL` — Path Traversal / LFI,
-- `SENSITIVE_FILE_SCAN` — сканирование чувствительных файлов,
-- `INVALID_METHOD` — нетипичный HTTP‑метод.
-
-Для каждого типа задана:
-
-- `severity` (1–5) — уровень критичности;
-- текстовое `description`.
-
-#### 3.5. `DetectedAnomaly`
-
-Конкретное срабатывание системы анализа.
-
-Основные поля:
-
-- `log_entry` — ссылка на запись лога;
-- `anomaly_type` — ссылка на `AnomalyType`;
-- `analysis_session` — к какой сессии относится;
-- `detection_method` — один из:
-  - `ml` — чисто ML (Isolation Forest),
-  - `signature` — чисто сигнатурное срабатывание,
-  - `hybrid` — одновременно ML + сигнатура;
-- `confidence_score` — нормированная уверенность модели (0–1);
-- `model_score` — сырое значение `score_samples` от IsolationForest;
-- **`explanation`** — человекочитаемое объяснение (ключевое поле для НИР);
-- `is_false_positive` — ручная пометка «ложное срабатывание».
-
-#### 3.6. `Alert`
-
-Уведомление для пользователя о важной / критической аномалии.
-
-- `anomaly` — ссылка на `DetectedAnomaly`;
-- `recipient` — пользователь, кому назначен алерт;
-- `status` — `new`, `in_progress`, `resolved`;
-- `message` — человекочитаемое описание (часто включает `explanation`).
-
-#### 3.7. `Report`
-
-Сущность для агрегированных отчётов.
-
-- `summary` — JSON со статистикой по аномалиям;
-- `pdf_path` — путь к сгенерированному PDF.
+- `log_analysis/urls.py` — корень: `/admin/`, `/api/`, `/ui/`, Swagger.
+- `analysis/urls.py` — REST под префиксом `/api/`.
+- `ui/urls.py` — страницы под префиксом `/ui/`.
 
 ---
 
-### 4. Извлечение признаков и сигнатурный анализ (`services/features.py`)
+## 3. Модель данных
 
-Модуль `features.py` выполняет две роли:
+### 3.1. `WebServer`
 
-1. **Извлечение числовых признаков для ML**:
-   - `uri_length` — длина URI;
-   - `uri_entropy` — энтропия (случайность) URI (Шеннон);
-   - `special_char_count` — количество спецсимволов (`?&=%<>"'\\;()[]`);
-   - `ip_request_count` — сколько записей с этим IP уже есть в БД (частотный признак);
-   - `user_agent_len`, `user_agent` — длина и усечённое значение User-Agent.
+Справочник источников логов: `name`, `created_at`.
 
-2. **Сигнатурный анализ (signature-based)**:
-   - `has_sqli_signature` — SQL‑инъекция (`UNION SELECT`, `OR 1=1`, `--`, `EXEC` и др.);
-   - `has_xss_signature` — XSS (`<script`, `onerror=`, `javascript:`, `alert(`);
-   - `has_path_traversal_signature` — Path Traversal / LFI (`../`, `/etc/passwd`, `/etc/shadow`, `\windows\system32`, `/proc/self/environ`);
-   - `has_sensitive_file_scan_signature` — доступ к `.env`, `.git`, `/wp-admin`, `/phpmyadmin`, `backup.sql`, `config.php`, `/admin` и т.п.;
-   - `has_invalid_method` — HTTP‑методы, не входящие в «белый список» (`GET`, `POST`, `HEAD`, `OPTIONS`, `PUT`, `PATCH`, `DELETE`);
-   - `has_any_signature` — общий флаг наличия хотя бы одного из вышеуказанных срабатываний.
+### 3.2. `AnalysisSession`
 
-Результатом работы модуля является словарь `features`, который записывается в поле `LogEntry.features` и используется как для ML, так и для принятия решений в API.
+Один прогон обработки (загрузка файла / импорт):
 
----
+- `start_time`, `end_time`, `model_version`
+- `logs_processed_count`, `anomalies_count`
+- `created_by` → `auth_user`
 
-### 5. Парсинг логов (`services/parser.py`)
+### 3.3. `LogEntry`
 
-Модуль `parser.py` отвечает за разбор строк access.log.
+Одна распарсенная строка access.log:
 
-- Используется класс **`NginxAccessLogParser`**:
-  - Поддерживает формат **Nginx combined** и совместимый **Apache combined**:
-    ```text
-    127.0.0.1 - - [10/Oct/2000:13:55:36 +0000] "GET /index.html HTTP/1.1" 200 2326 "-" "Mozilla/5.0"
-    ```
-  - `parse_line(line)`:
-    - разбор IP, времени, метода, URI, статуса, User-Agent;
-    - возвращает `ParsedLogLine` или `None` (если строка некорректна).
-  - `create_log_entry(parsed, web_server, analysis_session)`:
-    - вызывает `extract_features_from_parsed(...)` из `features.py`;
-    - создаёт и сохраняет `LogEntry` с заполненным полем `features`.
+- `timestamp`, `client_ip` (индексы), `method`, `uri`, `status_code`, `user_agent`, `raw_line`
+- `features` (JSONB) — признаки для ML и флаги сигнатур
+- `web_server`, `analysis_session` (FK, nullable)
 
-Таким образом, парсер — это мост между **сырой строкой лога** и нормализованной моделью `LogEntry`.
+Индексы: `(timestamp, client_ip)`, `(-timestamp)`.
 
----
+### 3.4. `AnomalyType`
 
-### 6. ML‑движок (`services/ml_engine.py`)
+Справочник типов (`code`, `name`, `severity` 1–5, `description`). Заполняется миграциями.
 
-Модуль `ml_engine.py` реализует обёртку над **Isolation Forest**.
+Примеры кодов:
 
-Основные элементы:
+| Код | Severity (типично) | Категория |
+|-----|-------------------|-----------|
+| SQLI, XSS, XXE, CMD_INJECTION | 5 | Атаки |
+| SSRF, LDAP_INJECTION, PATH_TRAVERSAL, SENSITIVE_FILE_SCAN | 4 | Атаки |
+| OPEN_REDIRECT, INVALID_METHOD, ML_UNCLASSIFIED | 3 | Средние / ML |
+| UNUSUAL_UA, LONG_URI_PROBE | 1 | Мягкие сигналы |
+| STAT_ANOMALY | 2 | Legacy fallback для ML |
 
-- `FEATURE_ORDER` — список признаков, которые подаются в модель (в фиксированном порядке).
-- Класс **`IsolationForestEngine`**:
-  - `__init__`:
-    - определяет путь к файлу модели (`MEDIA_ROOT/models/isolation_forest.pkl`);
-    - настраивает параметры (`contamination`, `random_state`).
-  - `fit(feature_dicts)`:
-    - принимает набор словарей признаков;
-    - строит матрицу признаков;
-    - обучает `IsolationForest` и сохраняет модель на диск через `joblib`.
-  - `predict(features)`:
-    - преобразует признаки в вектор;
-    - делает предсказание:
-      - `score_samples` — сырая оценка аномальности;
-      - `decision_function` — >0 норма, <0 аномалия;
-      - `confidence_score` — нормированный показатель уверенности в [0, 1];
-    - формирует объект `AnomalyPrediction` с полями:
-      - `is_anomaly`,
-      - `confidence_score`,
-      - `raw_score`,
-      - `explanation`.
-    - если модель **ещё не обучена**:
-      - перехватывает `NotFittedError`,
-      - возвращает `confidence_score = 0` и объяснение, что пока используется только сигнатурный анализ.
-  - `_build_explanation(...)`:
-    - формирует текст на русском, объединяющий:
-      - статистические признаки (длина URI, энтропия, спецсимволы, частота IP);
-      - наличие сигнатур (`SQLI`, `XSS`, `PATH_TRAVERSAL`, `SENSITIVE_FILE_SCAN`, `INVALID_METHOD`).
+### 3.5. `DetectedAnomaly`
 
-Это ядро **ML‑аналитики и интерпретируемости**.
+Результат детекции на одну `LogEntry`:
+
+- `detection_method`: `ml` | `signature` | `hybrid`
+- `confidence_score` (0–1), `model_score`, `explanation`
+- `risk_level`: `low` / `medium` / `high` / `critical` — из **severity** типа (`risk.py`), не из ML confidence
+- `is_false_positive`, `anomaly_type`, `analysis_session`
+
+### 3.6. `Alert`
+
+Уведомление аналитику: `anomaly`, `recipient`, `status`, `message`, `risk_level`.
+
+Статусы: `new`, `in_progress`, `false_positive`, `case`, `resolved`.
+
+Служебные таблицы Django: `auth_user`, `django_session`, `django_migrations` и др.
 
 ---
 
-### 7. REST API (`views.py`, `serializers.py`, `urls.py`)
+## 4. Пайплайн ingest (`analysis/services/ingest.py`)
 
-#### 7.1. Загрузка логов — `LogUploadView`
+Единая точка входа: **`ingest_text()`** → **`ingest_parsed_lines()`**.
 
-Эндпоинт:  
-`POST /api/logs/upload/`
+Вызывается из:
 
-Особенности:
+- `POST /api/logs/upload/` (`LogUploadView`)
+- `ui/views.upload_logs`, `import_from_fs`
+- `manage.py import_logs_from_fs`
 
-- Доступен только администраторам (`IsAdminUser`).
-- Поддерживает два режима:
-  1. `multipart/form-data` с полем `file` (классический upload).
-  2. бинарное тело запроса (raw body / `application/octet-stream` или `text/plain`),
-     удобно для Postman → Body → binary.
-- Опциональный `web_server_id` можно передать:
-  - в multipart (через `LogUploadSerializer`),
-  - либо в query‑параметре (`?web_server_id=1`) для бинарного тела.
+### Шаги для каждой строки
 
-Пайплайн внутри метода `post`:
+1. **`parser.create_log_entry()`** — парсинг уже выполнен; сохранение `LogEntry` + `features`.
+2. Счётчик **`ip_request_count`** ведётся в памяти за текущую загрузку (`ip_counts`), без запроса в БД на каждую строку.
+3. **`IsolationForestEngine.predict(features)`** — ML-оценка.
+4. Правила: `has_attack_signature`, `has_soft_signal` (из `features`).
+5. Аномалия, если **ML** (`is_anomaly` и `confidence_score ≥ 0.65`) **или** есть rule signal.
+6. Метод: ML + правила → `hybrid`; только правила → `signature`; только ML → `ml`.
+7. **`_resolve_anomaly_type()`** — приоритет кодов атак, затем мягких; только ML → `ML_UNCLASSIFIED`.
+8. **`calculate_risk_level(severity)`** — уровень риска.
+9. Создание **`DetectedAnomaly`**; при политике — **`Alert`**.
 
-1. Читается файл/тело запроса, создаётся `AnalysisSession`.
-2. Текст разбивается на строки.
-3. Для каждой строки:
-   - парсинг через `NginxAccessLogParser.parse_line`;
-   - создание `LogEntry` с признаками;
-   - вызов `IsolationForestEngine.predict(features)`;
-   - анализ флагов в `features`:
-     - `has_sqli_signature`,
-     - `has_xss_signature`,
-     - `has_path_traversal_signature`,
-     - `has_sensitive_file_scan_signature`,
-     - `has_invalid_method`,
-     - а также флаг ML‑аномалии (`confidence_score` выше порога).
-   - при срабатывании:
-     - создаётся `DetectedAnomaly` c:
-       - `detection_method` (`ml`, `signature`, `hybrid`),
-       - ссылкой на соответствующий `AnomalyType`,
-       - `confidence_score`, `model_score`, `explanation`;
-     - при высокой тяжести создаётся `Alert`.
-4. В конце сессия обновляется по количеству логов и аномалий.
-5. Клиент получает JSON:
-   ```json
-   {
-     "session_id": ...,
-     "logs_processed": ...,
-     "anomalies_detected": ...
-   }
-   ```
-
-#### 7.2. Остальные ViewSet’ы
-
-- `DetectedAnomalyViewSet`:
-  - `GET /api/anomalies/`, `GET /api/anomalies/{id}/`
-  - фильтры: по IP, коду аномалии, методу детекции, статус‑коду и т.п.
-  - в каждом объекте отдается `explanation`.
-- `AlertViewSet`:
-  - `GET /api/alerts/` + `PATCH` для смены статуса;
-  - не‑админам показываются только их алерты.
-- `AnalysisSessionViewSet`:
-  - история запусков: `GET /api/sessions/`.
-- `LogEntryViewSet`:
-  - просмотр нормализованных логов: `GET /api/log-entries/`.
-- `StatsView`:
-  - `GET /api/stats/` — агрегированная статистика:
-    - общее число логов и аномалий;
-    - число новых алертов;
-    - распределение аномалий по методам (`ml/signature/hybrid`);
-    - распределение по типам (`SQLI`, `XSS`, `PATH_TRAVERSAL` и т.д.).
+Опция **`skip_analysis`**: только сохранение `LogEntry` (для накопления данных перед `train_model`).
 
 ---
 
-### 8. Администрирование и служебные команды
+## 5. Признаки и сигнатуры (`features.py`)
 
-- `admin.py`:
-  - регистрирует все модели в Django Admin;
-  - настраивает списки, фильтры, поиск;
-  - позволяет помечать `is_false_positive`, просматривать логи, алерты и сессии.
-- `management/commands/train_model.py`:
-  - команда:
-    ```bash
-    python manage.py train_model --min-samples 100 --contamination 0.05
-    ```
-  - обучает Isolation Forest на накопившихся признаках и сохраняет модель.
+### Числовые признаки (вектор ML, `FEATURE_ORDER`)
+
+- `uri_length`, `uri_entropy`, `special_char_count`
+- `ip_request_count` — порядковый номер запроса IP **в текущей сессии ingest**
+- `user_agent_len`
+
+### Флаги атак (0/1)
+
+SQLi, XSS, path traversal, CMD injection, SSRF, LDAP, XXE, open redirect, sensitive file scan, invalid HTTP method → сводный **`has_attack_signature`**.
+
+### Мягкие сигналы
+
+- **`has_unusual_ua`** — пустой/сканерный User-Agent
+- **`has_long_uri_probe`** — URI ≥ 180 символов без сигнатуры атаки → **`has_soft_signal`**
+
+URI нормализуется: lower + до 3× URL-decode (`normalize_uri_for_detection`).
 
 ---
 
-### 9. Инфраструктура
+## 6. ML (`ml_engine.py`)
 
-- **`settings.py`**:
-  - база: SQLite (`BASE_DIR / "db" / "db.sqlite3"`);
-  - `MEDIA_ROOT`: `BASE_DIR / "media"` (там же лежит модель ML);
-  - DRF + drf-spectacular (Swagger по `/api/schema/`);
-  - базовая настройка CORS, логирования.
-- **`Dockerfile`**:
-  - образ на `python:3.10-slim`;
-  - установка зависимостей из `requirements.txt`;
-  - `CMD`: миграции + запуск `runserver`.
-- **`docker-compose.yml`**:
-  - один сервис `web`;
-  - volume’ы:
-    - `db_data` → `/app/db`,
-    - `media_data` → `/app/media`.
+- Модель: **Isolation Forest** (sklearn), файл `media/models/isolation_forest.pkl`.
+- **`contamination`** (по умолчанию 0.05) — гиперпараметр sklearn (ожидаемая доля выбросов в **обучающей** выборке), не «процент грязи в файле».
+- Команда **`train_model`**: обучение на `LogEntry.features`; строки с **`has_attack_signature=1` исключаются**; до 50 000 записей.
+- Если модель не обучена: `predict` возвращает нулевую уверенность, в `explanation` указано, что работают сигнатуры.
 
-Таким образом, проект удовлетворяет требованиям НИР:
-- лёгкая развёртка (SQLite, один контейнер),
-- модульность (отдельные модули parsers / features / ml_engine / api),
-- гибридный анализ (сигнатуры + ML),
-- прозрачность решений (поле `explanation` в API).
+---
 
+## 7. REST API
+
+| Метод | URL | Описание |
+|-------|-----|----------|
+| POST | `/api/logs/upload/` | Загрузка лога (admin), throttle 10/min |
+| GET | `/api/anomalies/` | Список аномалий |
+| GET/PATCH | `/api/alerts/` | Алерты |
+| GET | `/api/sessions/` | Сессии анализа |
+| GET | `/api/log-entries/` | Записи логов |
+
+Аутентификация: Session + Basic. Загрузка логов: **IsAdminUser**.
+
+**Статистика с графиками** — только UI: `/ui/stats/` (отдельного `/api/stats/` нет).
+
+Swagger: `/api/schema/`, ReDoc: `/api/schema/redoc/`.
+
+---
+
+## 8. Веб-интерфейс (`ui/`)
+
+| URL | Назначение |
+|-----|------------|
+| `/ui/` | Дашборд |
+| `/ui/upload/` | Загрузка файла (staff) |
+| `/ui/import/` | Импорт с диска (staff) |
+| `/ui/anomalies/`, `/ui/alerts/` | Просмотр результатов |
+| `/ui/stats/` | Графики (Chart.js) |
+| `/ui/sessions/`, `/ui/log-entries/`, `/ui/web-servers/` | Списки |
+
+Сессии Django: cookie `sessionid`, данные в таблице **`django_session`** (PostgreSQL).
+
+---
+
+## 9. Инфраструктура
+
+### `settings.py`
+
+- БД: PostgreSQL (`DB_HOST`, `DB_NAME`, …).
+- `MEDIA_ROOT` / `ML_MODELS_DIR` — модель ML.
+- DRF + `drf-spectacular`, django-filter, CORS (в DEBUG).
+
+### Docker Compose
+
+- **`db`**: `postgres:16`, том `postgres_data`.
+- **`web`**: сборка из `Dockerfile`, порт `8000`, том `media_data` → `/app/media`, `DB_HOST=db`.
+
+Код приложения в образе (`COPY . /app/`); примеры логов в контейнере: `/app/...` после сборки.
+
+---
+
+## 10. Рекомендуемый сценарий ML
+
+1. Импорт «нормального» трафика: `import_logs_from_fs --skip-analysis`.
+2. `train_model --min-samples 100 --contamination 0.05`.
+3. Импорт / upload с полным анализом — гибридная детекция с обученной моделью.
+
+---
+
+## 11. Структура каталогов
+
+```
+log_analysis/     # settings, urls, wsgi
+analysis/         # models, api, services, migrations, management
+ui/               # views, templates, static
+scripts/          # generate_sample_access_logs.py
+```
+
+Подробный запуск и примеры команд — в [README.md](README.md).
